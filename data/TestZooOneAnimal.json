@@ -1,0 +1,28 @@
+{
+    "Money": 1000,
+    "Animals": [{
+        "Happiness": 100,
+        "Hunger": 100,
+        "Health": 100,
+        "Enclosure": "Waiting Room",
+        "Species": "Orca",
+        "Age": 16,
+        "Name": "Tuki"
+    }],
+    "Enclosures": [{
+        "Animals": [{
+            "Happiness": 100,
+            "Hunger": 100,
+            "Health": 100,
+            "Enclosure": "Waiting Room",
+            "Species": "Orca",
+            "Age": 16,
+            "Name": "Tuki"
+        }],
+        "Capacity": 5,
+        "numAnimals": 1,
+        "Cleaness": 10,
+        "Name": "Waiting Room"
+    }],
+    "Name": "Angus"
+}

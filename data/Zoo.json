@@ -1,0 +1,63 @@
+{
+    "Money": 1040,
+    "Animals": [
+        {
+            "Happiness": 115,
+            "Hunger": 100,
+            "Health": 100,
+            "Enclosure": "Water",
+            "Species": "Orca",
+            "Age": 12,
+            "Name": "Angus"
+        },
+        {
+            "Happiness": 100,
+            "Hunger": 110,
+            "Health": 100,
+            "Enclosure": "Fire",
+            "Species": "Charizard",
+            "Age": 12,
+            "Name": "Chou"
+        }
+    ],
+    "Enclosures": [
+        {
+            "Animals": [],
+            "Capacity": 5,
+            "numAnimals": 0,
+            "Cleaness": 10,
+            "Name": "Waiting Room"
+        },
+        {
+            "Animals": [{
+                "Happiness": 115,
+                "Hunger": 100,
+                "Health": 100,
+                "Enclosure": "Water",
+                "Species": "Orca",
+                "Age": 12,
+                "Name": "Angus"
+            }],
+            "Capacity": 5,
+            "numAnimals": 1,
+            "Cleaness": 10,
+            "Name": "Water"
+        },
+        {
+            "Animals": [{
+                "Happiness": 100,
+                "Hunger": 110,
+                "Health": 100,
+                "Enclosure": "Fire",
+                "Species": "Charizard",
+                "Age": 12,
+                "Name": "Chou"
+            }],
+            "Capacity": 5,
+            "numAnimals": 1,
+            "Cleaness": 10,
+            "Name": "Fire"
+        }
+    ],
+    "Name": "World"
+}
