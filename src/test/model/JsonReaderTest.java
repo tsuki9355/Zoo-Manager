@@ -1,10 +1,12 @@
 package model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -12,104 +14,77 @@ import persistence.JsonReader;
 
 public class JsonReaderTest {
 
+    // EFFECTS: reads the zoo saved in the given data file, failing the test if it can't be read
+    private Zoo read(String fileName) {
+        try {
+            return new JsonReader("./data/" + fileName).read();
+        } catch (IOException e) {
+            fail("Couldn't read from file " + fileName);
+            return null;
+        }
+    }
 
     @Test
     void testReadNonExistentFile() {
         JsonReader reader = new JsonReader("./data/non_existent_file.json");
-        try {
-            Zoo zoo = reader.read();
-            fail("expected IOException");
-        } catch (IOException e) {
-            
-        }
+        assertThrows(IOException.class, reader::read);
     }
 
     @Test
     void testReadEmptyZoo() {
-        JsonReader reader = new JsonReader("./data/TestEmptyZoo.json");
-        try {
-            Zoo zoo = reader.read();
-            assertEquals("Angus", zoo.getZooName());
-            assertEquals(0, zoo.getNumAnimals());
-            assertEquals(0, zoo.getNumEnclosures());
-            assertEquals(1000, zoo.getZooMoney());
-        } catch (IOException e) {
-            fail("Couldn't read from file");
+        Zoo zoo = read("TestEmptyZoo.json");
+        assertEquals("Angus", zoo.getName());
+        assertEquals(0, zoo.getNumAnimals());
+        assertEquals(0, zoo.getNumEnclosures());
+        assertEquals(1000, zoo.getMoney());
+    }
+
+    @Test
+    void testReadLegacyFormatSharesAnimalObjects() {
+        // older save files also list each enclosure's animals; they must resolve to the zoo's own animals
+        Zoo zoo = read("TestMultipleAnimalsZoo.json");
+        assertEquals(3, zoo.getNumAnimals());
+        assertEquals(1, zoo.getNumEnclosures());
+        Enclosure waitingRoom = zoo.findEnclosure(Zoo.WAITING_ROOM);
+        assertEquals(3, waitingRoom.getNumAnimals());
+        for (Animal animal : zoo.getAnimals()) {
+            assertSame(waitingRoom, animal.getEnclosure());
         }
     }
 
     @Test
-    void testZooOneAnimal() {
-        JsonReader reader = new JsonReader("./data/testZooOneAnimal.json");
-        try {
-            Zoo zoo = reader.read();
-            assertEquals("Angus", zoo.getZooName());
-            assertEquals(1, zoo.getNumAnimals());
-            assertEquals(1, zoo.getNumEnclosures());
-            assertEquals(1000, zoo.getZooMoney());
-        } catch (IOException e) {
-            fail("Coudn't read from file");
-        }
+    void testReadMultipleAnimalsAndEnclosures() {
+        Zoo zoo = read("TestMultipleAnimalsAndEnclosure.json");
+        assertEquals("Angus", zoo.getName());
+        assertEquals(3, zoo.getNumAnimals());
+        assertEquals(3, zoo.getNumEnclosures());
+        assertEquals(1000, zoo.getMoney());
+        assertEquals("Water", zoo.findAnimal("Tuki").getEnclosureName());
     }
 
     @Test
-    void testMultipleAnimalZoo() {
-        JsonReader reader = new JsonReader("./data/TestMultipleAnimalsZoo.json");
-        try {
-            Zoo zoo = reader.read();
-            assertEquals("Angus", zoo.getZooName());
-            assertEquals(3, zoo.getNumAnimals());
-            assertEquals(1, zoo.getNumEnclosures());
-            assertEquals(1000, zoo.getZooMoney());
-        } catch (IOException e) {
-            fail("Coudn't read from file");
-        }
+    void testReadZooWithDifferentStatus() {
+        Zoo zoo = read("TestZooWithDifferentStatus.json");
+        assertEquals(1020, zoo.getMoney());
+
+        List<Animal> animals = zoo.getAnimals();
+        assertAnimal(animals.get(0), "Orca", "Tuki", 16);
+        assertAnimal(animals.get(1), "Orca", "Tukincho", 17);
+
+        Enclosure water = zoo.getEnclosures().get(1);
+        assertEquals("Water", water.getName());
+        assertEquals(12, water.getCleanliness());
+        assertEquals(1, water.getNumAnimals());
+        assertSame(animals.get(0), water.getAnimals().get(0));
     }
 
-    @Test
-    void testMultipleAnimalsAndEnclosureZoo() {
-        JsonReader reader = new JsonReader("./data/TestMultipleAnimalsAndEnclosure.json");
-        try {
-            Zoo zoo = reader.read();
-            assertEquals("Angus", zoo.getZooName());
-            assertEquals(3, zoo.getNumAnimals());
-            assertEquals(3, zoo.getNumEnclosures());
-            assertEquals(1000, zoo.getZooMoney());
-        } catch (IOException e) {
-            fail("Coudn't read from file");
-        }
+    // EFFECTS: checks the animal's identity and the condition stats stored in the status test file
+    private void assertAnimal(Animal animal, String species, String name, int age) {
+        assertEquals(species, animal.getSpecies());
+        assertEquals(name, animal.getName());
+        assertEquals(age, animal.getAge());
+        assertEquals(115, animal.getHappiness());
+        assertEquals(110, animal.getHunger());
+        assertEquals(105, animal.getHealth());
     }
-
-    @Test
-    void testMultipleAnimalsAndEnclosureWithStatusZoo() {
-        JsonReader reader = new JsonReader("./data/TestZooWithDifferentStatus.json");
-        try {
-            Zoo zoo = reader.read();
-            assertEquals(1020, zoo.getZooMoney());
-
-            ArrayList<Animal> animals = zoo.getAllAnimals();
-            ArrayList<Enclosure> enclosures = zoo.getAllEnclosure();
-            assertEquals(115, animals.get(0).getHappinness());
-            assertEquals(110, animals.get(0).getHunger());
-            assertEquals(105, animals.get(0).getHealth());
-            assertEquals("Orca", animals.get(0).getSpecie());
-            assertEquals("Tuki", animals.get(0).getName());
-            assertEquals(16, animals.get(0).getAge());
-
-            assertEquals(115, animals.get(1).getHappinness());
-            assertEquals(110, animals.get(1).getHunger());
-            assertEquals(105, animals.get(1).getHealth());
-            assertEquals("Orca", animals.get(1).getSpecie());
-            assertEquals("Tukincho", animals.get(1).getName());
-            assertEquals(17, animals.get(1).getAge());
-
-            assertEquals("Water", enclosures.get(1).getName());
-            assertEquals(12, enclosures.get(1).getCleaness());
-            assertEquals(1, enclosures.get(1).getNumAnimal());
-            
-        } catch (IOException e) {
-            fail("Coudn't read from file");
-        }
-    }
-
 }

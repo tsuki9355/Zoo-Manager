@@ -1,35 +1,35 @@
 package persistence;
 
-import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import model.Zoo;
+import java.nio.charset.StandardCharsets;
 
-import org.json.JSONObject;
+import model.Zoo;
 
 // Represents a writer that writes JSON representation of zoo to file
 public class JsonWriter {
-    private static int TAB = 4;
-    private PrintWriter writer;
-    private String destination;
+    private static final int TAB = 4;
 
-    // EFFECTS: construct a writer to write to destination file
+    private final String destination;
+    private PrintWriter writer;
+
+    // EFFECTS: constructs a writer to write to destination file
     public JsonWriter(String destination) {
         this.destination = destination;
     }
 
     // MODIFIES: this
-    // EFFECTS: opens writer; throws FIleNotFoundException if destination file cannot
-    // be opened for writing
+    // EFFECTS: opens writer; throws FileNotFoundException if destination file cannot be opened for writing
     public void open() throws FileNotFoundException {
-        writer = new PrintWriter(new File(destination));
+        writer = new PrintWriter(new OutputStreamWriter(new FileOutputStream(destination), StandardCharsets.UTF_8));
     }
 
     // MODIFIES: this
-    // EFFECTS: writes JSON representation of Zoo to file
+    // EFFECTS: writes JSON representation of zoo to file
     public void write(Zoo zoo) {
-        JSONObject json = zoo.toJson();
-        saveToFile(json.toString(TAB));
+        writer.print(zoo.toJson().toString(TAB));
     }
 
     // MODIFIES: this
@@ -38,9 +38,14 @@ public class JsonWriter {
         writer.close();
     }
 
-    // MODIFIES: this
-    // EFFECTS: writes string to file
-    private void saveToFile(String json) {
-        writer.print(json);
+    // EFFECTS: writes zoo to the destination file in one step (open, write, close)
+    //          throws FileNotFoundException if destination file cannot be opened for writing
+    public void save(Zoo zoo) throws FileNotFoundException {
+        open();
+        try {
+            write(zoo);
+        } finally {
+            close();
+        }
     }
 }

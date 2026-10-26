@@ -1,37 +1,38 @@
 {
     "Money": 1000,
-    "Animals": [{
-        "Happiness": 100,
-        "Hunger": 100,
-        "Health": 100,
-        "Enclosure": "Water",
-        "Species": "Orca",
-        "Age": 16,
-        "Name": "Tuki"
-    }],
-    "Enclosures": [
+    "Animals": [
         {
-            "Animals": [],
-            "Capacity": 5,
-            "numAnimals": 0,
-            "Cleaness": 10,
-            "Name": "Waiting Room"
+            "Happiness": 100,
+            "Hunger": 100,
+            "Health": 100,
+            "Enclosure": "Waiting Room",
+            "Species": "Orca",
+            "Age": 16,
+            "Name": "Tuki"
         },
         {
-            "Animals": [{
-                "Happiness": 100,
-                "Hunger": 100,
-                "Health": 100,
-                "Enclosure": "Water",
-                "Species": "Orca",
-                "Age": 16,
-                "Name": "Tuki"
-            }],
-            "Capacity": 5,
-            "numAnimals": 1,
-            "Cleaness": 10,
-            "Name": "Water"
+            "Happiness": 100,
+            "Hunger": 100,
+            "Health": 100,
+            "Enclosure": "Waiting Room",
+            "Species": "Orca",
+            "Age": 17,
+            "Name": "Tukincho"
+        },
+        {
+            "Happiness": 100,
+            "Hunger": 100,
+            "Health": 100,
+            "Enclosure": "Waiting Room",
+            "Species": "Hippo",
+            "Age": 7,
+            "Name": "Bob"
         }
     ],
+    "Enclosures": [{
+        "Capacity": 5,
+        "Name": "Waiting Room",
+        "Cleaness": 10
+    }],
     "Name": "Angus"
 }

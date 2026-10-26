@@ -2,38 +2,31 @@ package ui;
 
 import model.Animal;
 import model.Enclosure;
+import model.Event;
+import model.EventLog;
 import model.Zoo;
 import persistence.JsonReader;
 import persistence.JsonWriter;
 
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-
-import model.Event;
-import model.EventLog;
-
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import java.util.function.Consumer;
 
 public class ZooManageAppGUI extends JFrame {
 
     private static final String JSON_STORE = "./data/Zoo.json";
+    private static final String DEFAULT_ZOO_NAME = "My Zoo";
 
-    private JsonWriter jsonWriter;
-    private JsonReader jsonReader;
+    private final JsonWriter jsonWriter;
+    private final JsonReader jsonReader;
 
     private Zoo zoo;
-    private Enclosure defaultEnclosure;
 
     private DefaultListModel<Enclosure> enclosureListModel;
     private JList<Enclosure> enclosureList;
@@ -58,31 +51,25 @@ public class ZooManageAppGUI extends JFrame {
     public void init() {
         zooIcon = new ImageIcon("./lib/cute.jpg");
         this.setIconImage(zooIcon.getImage());
-        String name = JOptionPane.showInputDialog(
-                    this,
-                    "Enter a name for your zoo!",
-                    "Create Zoo",
-                    JOptionPane.QUESTION_MESSAGE
-        );
-        zoo = new Zoo(name);
-        defaultEnclosure = new Enclosure("Waiting Room");
-        zoo.addEnclosure(defaultEnclosure);
-        initGUI(name);
+        String name = ask("Enter a name for your zoo!");
+        zoo = new Zoo(name == null ? DEFAULT_ZOO_NAME : name);
+        zoo.getOrCreateWaitingRoom();
+        initGUI(zoo.getName());
     }
 
     // MODIFIES: this
-    // EFFECTS: creates the GUI of zoo managing game 
+    // EFFECTS: creates the GUI of zoo managing game
     public void initGUI(String name) {
         JPanel root = windowLayoutMain(name);
-        root = topPanel(name, root);
-        root = center(root);
+        topPanel(name, root);
+        center(root);
         bottomPanel(root);
         this.addWindowListener(new WindowAdapter() {
-        @Override
-        public void windowClosing(WindowEvent e) {
-            printEventLog();
-        }
-    });
+            @Override
+            public void windowClosing(WindowEvent e) {
+                printEventLog();
+            }
+        });
     }
 
     // MODIFIES: this
@@ -91,7 +78,7 @@ public class ZooManageAppGUI extends JFrame {
         this.setTitle(name);
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         this.setResizable(true);
-        this.setSize(900, 600);
+        this.setSize(1100, 650);
         this.setLocationRelativeTo(null);
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -102,7 +89,7 @@ public class ZooManageAppGUI extends JFrame {
 
     // MODIFIES: this
     // EFFECTS: create the top panel and add it to root
-    public JPanel topPanel(String name, JPanel root) {
+    public void topPanel(String name, JPanel root) {
         JPanel topPanel = new JPanel(new BorderLayout(10, 0));
         topPanel.setOpaque(false);
         zooNameLabel = new JLabel(name);
@@ -114,46 +101,37 @@ public class ZooManageAppGUI extends JFrame {
         zooNamePanel.setPreferredSize(new Dimension(180, 60));
         topPanel.add(zooNamePanel, BorderLayout.WEST);
 
-        JPanel functionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+        JPanel functionsPanel = new JPanel(new GridLayout(0, 4, 5, 5));
         functionsPanel.setBorder(BorderFactory.createTitledBorder("List of functions to choose from"));
         functionsPanel.setOpaque(false);
-        functionsPanel.setPreferredSize(new Dimension(20, 100));
         addFunctionButtons(functionsPanel);
         topPanel.add(functionsPanel, BorderLayout.CENTER);
         root.add(topPanel, BorderLayout.NORTH);
-        return root;
     }
 
     // MODIFIES: this
     // EFFECTS: create the center panel and add it to root
-    public JPanel center(JPanel root) {
-        enclosureListModel = new DefaultListModel<Enclosure>();
-        enclosureList = new JList<Enclosure>(enclosureListModel);
+    public void center(JPanel root) {
+        enclosureListModel = new DefaultListModel<>();
+        enclosureList = new JList<>(enclosureListModel);
         enclosureList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-
         JScrollPane enclosureScroll = new JScrollPane(enclosureList);
-        enclosureScroll.setBorder(
-                BorderFactory.createTitledBorder("List of Enclosures"));
+        enclosureScroll.setBorder(BorderFactory.createTitledBorder("List of Enclosures"));
 
-        animalListModel = new DefaultListModel<Animal>();
-        animalList = new JList<Animal>(animalListModel);
-
+        animalListModel = new DefaultListModel<>();
+        animalList = new JList<>(animalListModel);
         JScrollPane animalScroll = new JScrollPane(animalList);
-        animalScroll.setBorder(
-                BorderFactory.createTitledBorder("List of animals in the selected enclosure"));
-        JSplitPane centerSplit = new JSplitPane(
-                JSplitPane.HORIZONTAL_SPLIT, enclosureScroll, animalScroll);
+        animalScroll.setBorder(BorderFactory.createTitledBorder("List of animals in the selected enclosure"));
+
+        JSplitPane centerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, enclosureScroll, animalScroll);
         centerSplit.setResizeWeight(0.3);
         root.add(centerSplit, BorderLayout.CENTER);
 
-        enclosureList.addListSelectionListener(new ListSelectionListener() {
-            public void valueChanged(ListSelectionEvent e) {
-                if (!e.getValueIsAdjusting()) {
-                    updateAnimalList();
-                }
+        enclosureList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateAnimalList();
             }
         });
-        return root;
     }
 
     // MODIFIES: this
@@ -162,87 +140,40 @@ public class ZooManageAppGUI extends JFrame {
         JPanel statusPanel = new JPanel(new BorderLayout());
         statusPanel.setOpaque(false);
         statusPanel.setBorder(BorderFactory.createTitledBorder("Zoo status"));
-
         statusLabel = new JLabel();
         statusPanel.add(statusLabel, BorderLayout.CENTER);
-
         root.add(statusPanel, BorderLayout.SOUTH);
-
-        refreshEnclosureList();
-        updateStatus();
-
+        refreshAll();
         setVisible(true);
     }
 
     // MODIFIES: this
     // EFFECTS: add all the function buttons to the given panel
-    @SuppressWarnings("methodlength")
     private void addFunctionButtons(JPanel panel) {
-        panel.add(makeButton("Add enclosure", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handleAddEnclosure();
-            }
+        panel.add(makeButton("Add enclosure", e -> handleAddEnclosure()));
+        panel.add(makeButton("Remove enclosure", e -> handleRemoveEnclosure()));
+        panel.add(makeButton("Add animal", e -> handleAddAnimal()));
+        panel.add(makeButton("Assign to enclosure", e -> handleAssignAnimalToEnclosure()));
+        panel.add(makeButton("Remove from enclosure", e -> handleRemoveAnimalFromEnclosure()));
+        panel.add(makeButton("Clean enclosures", e -> {
+            zoo.cleanAllEnclosures();
+            refreshAll();
+            show("All enclosures have been cleaned!");
         }));
-
-        panel.add(makeButton("Remove enclosure", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handleRemoveEnclosure();
-            }
+        panel.add(makeButton("Feed", e -> handleCareForSelected(Animal::feed, "feed")));
+        panel.add(makeButton("Feed all", e -> handleCareForAll(zoo::feedAllAnimals, "All animals are fed!")));
+        panel.add(makeButton("Play", e -> handleCareForSelected(Animal::play, "play with")));
+        panel.add(makeButton("Play all", e -> handleCareForAll(zoo::playWithAllAnimals, "You played with everyone!")));
+        panel.add(makeButton("Sleep", e -> handleCareForSelected(Animal::sleep, "put to sleep")));
+        panel.add(makeButton("Sleep all", e -> handleCareForAll(zoo::sleepAllAnimals, "All animals have slept!")));
+        panel.add(makeButton("Treat", e -> handleCareForSelected(Animal::treat, "treat")));
+        panel.add(makeButton("Increase income", e -> {
+            zoo.increaseIncome();
+            updateStatus();
+            show("Income increased! We now have $" + zoo.getMoney());
         }));
-
-        panel.add(makeButton("Add animal", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handleAddAnimal();
-            }
-        }));
-
-        panel.add(makeButton("Assign animal -> enclosure", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handleAssignAnimalToEnclosure();
-            }
-        }));
-
-        panel.add(makeButton("Feed one", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handleFeedOneAnimal();
-            }
-        }));
-
-        panel.add(makeButton("Play one", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handlePlayOneAnimal();
-            }
-        }));
-
-        panel.add(makeButton("Clean enclosures", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                zoo.cleanAllEnclosure();
-                updateStatus();
-                JOptionPane.showMessageDialog(ZooManageAppGUI.this,
-                        "All enclosures have been cleaned!");
-            }
-        }));
-
-        panel.add(makeButton("Increase income", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                zoo.increaseIncome();
-                updateStatus();
-                JOptionPane.showMessageDialog(ZooManageAppGUI.this,
-                        "Income increased! We now have $" + zoo.getZooMoney());
-            }
-        }));
-
-        panel.add(makeButton("Save", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handleSaveZoo();
-            }
-        }));
-
-        panel.add(makeButton("Load", new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                handleLoadZoo();
-            }
-        }));
+        panel.add(makeButton("Save", e -> handleSaveZoo()));
+        panel.add(makeButton("Load", e -> handleLoadZoo()));
     }
 
     // EFFECTS: create a new button with given text and listener and returns it
@@ -256,175 +187,158 @@ public class ZooManageAppGUI extends JFrame {
     // MODIFIES: this, zoo
     // EFFECTS: add enclosure to the zoo and show it
     private void handleAddEnclosure() {
-        String name = JOptionPane.showInputDialog(this, "Enter new enclosure name:");
-        zoo.addEnclosure(name.trim());
-        refreshEnclosureList();
-        updateStatus();
-        JOptionPane.showMessageDialog(this, "Enclosure '" + name + "' added!");
+        String name = ask("Enter new enclosure name:");
+        if (name == null) {
+            return;
+        }
+        if (!zoo.addEnclosure(name)) {
+            show("An enclosure called '" + name + "' already exists.");
+            return;
+        }
+        refreshAll();
+        show("Enclosure '" + name + "' added!");
     }
 
     // MODIFIES: this, zoo
     // EFFECTS: remove the selected enclosure
     private void handleRemoveEnclosure() {
-        Enclosure selected = (Enclosure) enclosureList.getSelectedValue();
+        Enclosure selected = enclosureList.getSelectedValue();
         if (selected == null) {
-            JOptionPane.showMessageDialog(this, "Select an enclosure to remove.");
-            return;
+            show("Select an enclosure to remove.");
+        } else if (!selected.isEmpty()) {
+            show("Cannot remove. Enclosure is not empty.");
+        } else {
+            zoo.removeEnclosure(selected.getName());
+            refreshAll();
+            show("Enclosure '" + selected.getName() + "' was removed!");
         }
-        if (selected.getNumAnimal() > 0) {
-            JOptionPane.showMessageDialog(this,
-                    "Cannot remove. Enclosure is not empty.");
-            return;
-        }
-        zoo.removeEnclosure(selected.getName());
-        refreshEnclosureList();
-        updateStatus();
-        JOptionPane.showMessageDialog(this,
-                "Enclosure '" + selected.getName() + "' was removed!");
     }
 
     // MODIFIES: this, zoo
     // EFFECTS: add an animal and assign it to Waiting Room
     private void handleAddAnimal() {
-        if (defaultEnclosure.getNumAnimal() == defaultEnclosure.getCapacity()) {
-            JOptionPane.showMessageDialog(this,
-                    "Waiting Room capacity is max, please assign some animals to other enclosures.");
+        if (zoo.getOrCreateWaitingRoom().isFull()) {
+            show("Waiting Room capacity is max, please assign some animals to other enclosures.");
             return;
         }
-        String species = JOptionPane.showInputDialog(this, "Enter animal's species:");
-        String name = JOptionPane.showInputDialog(this, "Enter animal's name:");
-        String ageStr = JOptionPane.showInputDialog(this, "Enter animal's age:");
+        String species = ask("Enter animal's species:");
+        String name = species == null ? null : ask("Enter animal's name:");
+        String ageText = name == null ? null : ask("Enter animal's age:");
+        if (ageText == null) {
+            return;
+        }
         int age;
         try {
-            age = Integer.parseInt(ageStr.trim());
+            age = Integer.parseInt(ageText);
         } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Age must be an integer.");
+            show("Age must be an integer.");
             return;
         }
-
-        zoo.addAnimal(species.trim(), name.trim(), age);
-        zoo.assignAnimalToEnclosure(name.trim(), "Waiting Room");
-        refreshEnclosureList();
-        updateStatus();
-        updateAnimalList();
-        JOptionPane.showMessageDialog(this, "Animal added to Waiting Room!");
+        if (!zoo.addAnimal(species, name, age)) {
+            show("An animal called '" + name + "' already exists.");
+            return;
+        }
+        zoo.assignAnimalToEnclosure(name, Zoo.WAITING_ROOM);
+        refreshAll();
+        show("Animal added to Waiting Room!");
     }
 
     // MODIFIES: this, zoo
-    // EFFECTS: assign animal to an enclosure
-    @SuppressWarnings("methodlength")
+    // EFFECTS: lets the user pick an animal (including ones without an enclosure) and an enclosure
+    //          from drop-downs, then moves the animal there
     private void handleAssignAnimalToEnclosure() {
-        JTextField animalField = new JTextField(10);
-        JTextField enclosureField = new JTextField(10);
+        if (zoo.getNumAnimals() == 0) {
+            show("There are no animals yet.");
+            return;
+        }
+        JComboBox<String> animalBox = new JComboBox<>();
+        zoo.getAnimals().forEach(a -> animalBox.addItem(a.getName()));
+        JComboBox<String> enclosureBox = new JComboBox<>();
+        zoo.getEnclosures().forEach(e -> enclosureBox.addItem(e.getName()));
+        Animal selected = animalList.getSelectedValue();
+        if (selected != null) {
+            animalBox.setSelectedItem(selected.getName());
+        }
 
         JPanel panel = new JPanel(new GridLayout(2, 2, 5, 5));
-        panel.add(new JLabel("Animal name:"));
-        panel.add(animalField);
-        panel.add(new JLabel("Enclosure name:"));
-        panel.add(enclosureField);
-
-        int result = JOptionPane.showConfirmDialog(
-                this,
-                panel,
-                "Assign animal to enclosure",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE
-        );
-
-        if (result != JOptionPane.OK_OPTION) {
-            return;
+        panel.add(new JLabel("Animal:"));
+        panel.add(animalBox);
+        panel.add(new JLabel("Enclosure:"));
+        panel.add(enclosureBox);
+        int result = JOptionPane.showConfirmDialog(this, panel, "Assign animal to enclosure",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (result == JOptionPane.OK_OPTION) {
+            String animalName = (String) animalBox.getSelectedItem();
+            String enclosureName = (String) enclosureBox.getSelectedItem();
+            show(describe(zoo.assignAnimalToEnclosure(animalName, enclosureName), animalName, enclosureName));
+            refreshAll();
         }
-
-        String animalName = animalField.getText().trim();
-        String enclosureName = enclosureField.getText().trim();
-
-        if (animalName.length() == 0 || enclosureName.length() == 0) {
-            JOptionPane.showMessageDialog(this, "Both names are required.");
-            return;
-        }
-
-        Animal a = findAnimalByName(animalName);
-        if (a == null) {
-            JOptionPane.showMessageDialog(this, "No such animal.");
-            return;
-        }
-
-        Enclosure e = findEnclosureByName(enclosureName);
-        if (e == null) {
-            JOptionPane.showMessageDialog(this, "No such enclosure.");
-            return;
-        }
-
-        if (!e.canAcceptAnimal()) {
-            JOptionPane.showMessageDialog(this, "Enclosure is full already!");
-            return;
-        }
-
-        if (e.getExist(a)) {
-            JOptionPane.showMessageDialog(this, "This animal is already in that enclosure!");
-            return;
-        }
-
-        Enclosure current = a.getEnclosure();
-        if (current != null) {
-            current.removeAnimal(a);
-            a.setToNoEnclosure();
-        }
-
-        e.addAnimal(a);
-        a.assign(e);
-
-        refreshEnclosureList();
-        updateAnimalList();
-        updateStatus();
-
-        JOptionPane.showMessageDialog(this,
-                "Assigned '" + a.getName() + "' to enclosure '" + e.getName() + "'.");
     }
 
     // MODIFIES: this, zoo
-    // EFFECTS: Feed an the selected animal
-    private void handleFeedOneAnimal() {
-        Animal selected = (Animal) animalList.getSelectedValue();
+    // EFFECTS: takes the selected animal out of its enclosure, leaving it without one
+    private void handleRemoveAnimalFromEnclosure() {
+        Animal selected = animalList.getSelectedValue();
         if (selected == null) {
-            JOptionPane.showMessageDialog(this, "Select an animal to feed.");
+            show("Select an animal to remove from its enclosure.");
             return;
         }
-        selected.feed();
-        updateAnimalList();
-        updateStatus();
-        JOptionPane.showMessageDialog(this,
-                "Fed '" + selected.getName()
-                        + "', hunger is now: " + selected.getHunger());
+        String enclosureName = selected.getEnclosureName();
+        zoo.removeAnimalFromEnclosure(selected.getName(), enclosureName);
+        refreshAll();
+        show("Removed '" + selected.getName() + "' from '" + enclosureName
+                + "'. Use 'Assign to enclosure' to give it a new home.");
     }
 
-    // MODIFIES: this, zoo
-    // EFFECTS: play with the selected animal
-    private void handlePlayOneAnimal() {
-        Animal selected = (Animal) animalList.getSelectedValue();
+    // EFFECTS: returns a message describing the outcome of an assignment
+    private String describe(Zoo.AssignResult result, String animalName, String enclosureName) {
+        switch (result) {
+            case ASSIGNED:
+                return "Assigned '" + animalName + "' to enclosure '" + enclosureName + "'.";
+            case NO_SUCH_ANIMAL:
+                return "No such animal.";
+            case NO_SUCH_ENCLOSURE:
+                return "No such enclosure.";
+            case ALREADY_THERE:
+                return "This animal is already in that enclosure!";
+            default:
+                return "Enclosure is full already!";
+        }
+    }
+
+    // MODIFIES: this, the selected animal
+    // EFFECTS: applies care to the selected animal and reports its new condition
+    private void handleCareForSelected(Consumer<Animal> care, String action) {
+        Animal selected = animalList.getSelectedValue();
         if (selected == null) {
-            JOptionPane.showMessageDialog(this, "Select an animal to play with.");
+            show("Select an animal to " + action + ".");
             return;
         }
-        selected.play();
-        updateAnimalList();
-        updateStatus();
-        JOptionPane.showMessageDialog(this,
-                "Played with '" + selected.getName()
-                        + "', happiness is now " + selected.getHappinness());
+        care.accept(selected);
+        refreshAll();
+        show(selected.getName() + " is now at  health " + selected.getHealth()
+                + ",  happiness " + selected.getHappiness() + ",  hunger " + selected.getHunger());
+    }
+
+    // MODIFIES: this, every animal
+    // EFFECTS: applies care to every animal in the zoo and shows message
+    private void handleCareForAll(Runnable care, String message) {
+        if (zoo.getNumAnimals() == 0) {
+            show("There are no animals yet.");
+            return;
+        }
+        care.run();
+        refreshAll();
+        show(message);
     }
 
     // EFFECTS: save the current zoo as JSON files
     private void handleSaveZoo() {
         try {
-            jsonWriter.open();
-            jsonWriter.write(zoo);
-            jsonWriter.close();
-            JOptionPane.showMessageDialog(this,
-                    "Saved " + zoo.getZooName() + " to " + JSON_STORE);
+            jsonWriter.save(zoo);
+            show("Saved " + zoo.getName() + " to " + JSON_STORE);
         } catch (FileNotFoundException e) {
-            JOptionPane.showMessageDialog(this,
-                    "Unable to write to file: " + JSON_STORE);
+            show("Unable to write to file: " + JSON_STORE);
         }
     }
 
@@ -433,90 +347,73 @@ public class ZooManageAppGUI extends JFrame {
     private void handleLoadZoo() {
         try {
             zoo = jsonReader.read();
-            defaultEnclosure = findEnclosureByName("Waiting Room");
-            if (defaultEnclosure == null) {
-                defaultEnclosure = new Enclosure("Waiting Room");
-                zoo.addEnclosure(defaultEnclosure);
-            }
-
-            zooNameLabel.setText(zoo.getZooName());
-            setTitle(zoo.getZooName());
-            refreshEnclosureList();
+            zoo.getOrCreateWaitingRoom();
+            zooNameLabel.setText(zoo.getName());
+            setTitle(zoo.getName());
+            refreshAll();
             if (!enclosureListModel.isEmpty()) {
                 enclosureList.setSelectedIndex(0);
             }
-            updateAnimalList();
-            updateStatus();
-            JOptionPane.showMessageDialog(this,
-                    "Loaded " + zoo.getZooName() + " from " + JSON_STORE);
+            show("Loaded " + zoo.getName() + " from " + JSON_STORE);
         } catch (IOException e) {
-            JOptionPane.showMessageDialog(this,
-                    "Unable to read from file: " + JSON_STORE);
+            show("Unable to read from file: " + JSON_STORE);
         }
     }
 
     // MODIFIES: this
-    // EFFECTS: refresh the enclosure list
-    private void refreshEnclosureList() {
+    // EFFECTS: refresh the enclosure list (keeping the selection where possible), animal list and status
+    private void refreshAll() {
+        Enclosure selected = enclosureList.getSelectedValue();
         enclosureListModel.clear();
-        ArrayList<Enclosure> list = zoo.getAllEnclosure();
-        for (Enclosure e : list) {
+        for (Enclosure e : zoo.getEnclosures()) {
             enclosureListModel.addElement(e);
         }
+        if (selected != null && enclosureListModel.contains(selected)) {
+            enclosureList.setSelectedValue(selected, true);
+        }
+        updateAnimalList();
+        updateStatus();
     }
 
     // MODIFIES: this
-    // EFFECTS: update the animal list 
+    // EFFECTS: update the animal list to show the selected enclosure's animals
     private void updateAnimalList() {
         animalListModel.clear();
-
         Enclosure selected = enclosureList.getSelectedValue();
-        if (selected == null) {
-            return;
-        }
-        ArrayList<Animal> animalsInThisEnclosure = selected.getAllAnimals();
-        for (Animal a : animalsInThisEnclosure) {
-            animalListModel.addElement(a);
+        if (selected != null) {
+            for (Animal a : selected.getAnimals()) {
+                animalListModel.addElement(a);
+            }
         }
     }
 
     // MODIFIES: this
     // EFFECTS: update the zoo's status
     private void updateStatus() {
-        statusLabel.setText("Money: $" + zoo.getZooMoney()
+        long homeless = zoo.getAnimals().stream().filter(a -> !a.hasEnclosure()).count();
+        statusLabel.setText("Money: $" + zoo.getMoney()
                 + " | Enclosures: " + zoo.getNumEnclosures()
-                + " | Animals: " + zoo.getNumAnimals());
+                + " | Animals: " + zoo.getNumAnimals()
+                + (homeless > 0 ? " (" + homeless + " without an enclosure)" : "")
+                + " | Rating: " + zoo.getRating() + "/" + Zoo.MAX_RATING);
     }
 
-    // EFFECTS: find and returns the animal with the given name
-    private Animal findAnimalByName(String name) {
-        ArrayList<Animal> list = zoo.getAllAnimals();
-        for (Animal a : list) {
-            if (a.getName().equals(name)) {
-                return a;
-            }
-        }
-        return null;
+    // EFFECTS: shows prompt in a dialog and returns the trimmed answer, or null if cancelled or blank
+    private String ask(String prompt) {
+        String answer = JOptionPane.showInputDialog(this, prompt);
+        return answer == null || answer.trim().isEmpty() ? null : answer.trim();
     }
 
-    // EFEFCTS: find and returns the enclsure with the given name
-    private Enclosure findEnclosureByName(String name) {
-        ArrayList<Enclosure> list = zoo.getAllEnclosure();
-        for (Enclosure e : list) {
-            if (e.getName().equals(name)) {
-                return e;
-            }
-        }
-        return null;
+    // EFFECTS: shows message in a dialog
+    private void show(String message) {
+        JOptionPane.showMessageDialog(this, message);
     }
 
     // EFFECTS: display the image
     private void displayImage() {
         if (zooIcon != null) {
             Image scaled = zooIcon.getImage().getScaledInstance(40, 40, Image.SCALE_SMOOTH);
-            ImageIcon smallIcon = new ImageIcon(scaled);
-
-            zooNameLabel.setIcon(smallIcon);
+            zooNameLabel.setIcon(new ImageIcon(scaled));
             zooNameLabel.setHorizontalTextPosition(SwingConstants.RIGHT);
             zooNameLabel.setIconTextGap(10);
         }
@@ -524,9 +421,8 @@ public class ZooManageAppGUI extends JFrame {
 
     // EFFECTS: prints all events in the EventLog to the console
     private void printEventLog() {
-    EventLog log = EventLog.getInstance();
-    for (Event next : log) {
-        System.out.println(next.toString());
+        for (Event next : EventLog.getInstance()) {
+            System.out.println(next.toString());
+        }
     }
-}
 }

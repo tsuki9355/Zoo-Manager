@@ -1,11 +1,11 @@
 package model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
 
 import org.junit.jupiter.api.Test;
 
@@ -26,54 +26,64 @@ public class JsonWriterTest {
     }
 
     @Test
-    void testEmptyZoo() {
+    void testWriteEmptyZoo() {
         try {
-            Zoo zoo = new Zoo("Angus");
             JsonWriter writer = new JsonWriter("./data/TestEmptyZoo.json");
             writer.open();
-            writer.write(zoo);
+            writer.write(new Zoo("Angus"));
             writer.close();
-    
-            JsonReader reader = new JsonReader("./data/TestEmptyZoo.json");
-            zoo = reader.read();
-            assertEquals("Angus", zoo.getZooName());
+
+            Zoo zoo = new JsonReader("./data/TestEmptyZoo.json").read();
+            assertEquals("Angus", zoo.getName());
             assertEquals(0, zoo.getNumEnclosures());
-            assertEquals(1000, zoo.getZooMoney());
+            assertEquals(1000, zoo.getMoney());
         } catch (IOException e) {
             fail("Exceptions should not have been thrown here");
         }
     }
 
     @Test
-    void testGeneralZoo() {
+    void testWriteGeneralZoo() {
         try {
             Zoo zoo = new Zoo("Angus");
             zoo.addAnimal("Orca", "Tuki", 16);
-            zoo.addEnclosure("Waiting Room");
+            zoo.addAnimal("Hippo", "Bob", 7);
+            zoo.addEnclosure(Zoo.WAITING_ROOM);
             zoo.addEnclosure("Water");
             zoo.assignAnimalToEnclosure("Tuki", "Water");
-            JsonWriter writer = new JsonWriter("./data/TestGeneralZoo.json");
-            writer.open();
-            writer.write(zoo);
-            writer.close();
-    
-            JsonReader reader = new JsonReader("./data/TestGeneralZoo.json");
-            zoo = reader.read();
-            ArrayList<Animal> animals = zoo.getAllAnimals();
-            ArrayList<Enclosure> enclosures = zoo.getAllEnclosure();
-            assertEquals("Angus", zoo.getZooName());
+            zoo.playAnimal("Tuki");
+            new JsonWriter("./data/TestGeneralZoo.json").save(zoo);
+
+            zoo = new JsonReader("./data/TestGeneralZoo.json").read();
+            assertEquals("Angus", zoo.getName());
             assertEquals(2, zoo.getNumEnclosures());
-            assertEquals(1000, zoo.getZooMoney());
-            assertEquals("Orca", animals.get(0).getSpecie());
-            assertEquals("Tuki", animals.get(0).getName());
-            assertEquals(16, animals.get(0).getAge());
+            assertEquals(1000, zoo.getMoney());
 
-            assertEquals("Water", enclosures.get(1).getName());
-            assertEquals(10, enclosures.get(1).getCleaness());
-            assertEquals(1, enclosures.get(1).getNumAnimal());
+            Animal tuki = zoo.findAnimal("Tuki");
+            assertEquals("Orca", tuki.getSpecies());
+            assertEquals(16, tuki.getAge());
+            assertEquals(115, tuki.getHappiness());
 
+            Enclosure water = zoo.findEnclosure("Water");
+            assertEquals(10, water.getCleanliness());
+            assertEquals(1, water.getNumAnimals());
+            assertSame(water, tuki.getEnclosure());
+            assertNull(zoo.findAnimal("Bob").getEnclosure());
         } catch (IOException e) {
-            // fail("Exceptions should not have been thrown here");
+            fail("Exceptions should not have been thrown here");
+        }
+    }
+
+    @Test
+    void testSaveAfterLoad() {
+        // round-tripping a loaded zoo used to crash because loaded animals had no enclosure
+        try {
+            Zoo zoo = new JsonReader("./data/TestMultipleAnimalsZoo.json").read();
+            new JsonWriter("./data/TestGeneralZoo.json").save(zoo);
+            Zoo reloaded = new JsonReader("./data/TestGeneralZoo.json").read();
+            assertEquals(3, reloaded.findEnclosure(Zoo.WAITING_ROOM).getNumAnimals());
+        } catch (IOException e) {
+            fail("Exceptions should not have been thrown here");
         }
     }
 }

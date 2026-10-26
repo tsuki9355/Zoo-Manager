@@ -4,167 +4,146 @@ import org.json.JSONObject;
 
 import persistence.Writable;
 
-// Represents an animal that have a specie, name, age, health, hunger, happiness and an enclosure
+// Represents an animal with a species, name, age, three condition stats (health, happiness, hunger)
+// and the enclosure it currently lives in (null if it has none)
 public class Animal implements Writable {
 
-    private static int DEFAULT_HEALTH = 100;
-    private static int DEFAULT_HAPPINESS = 100;
-    private static int DEFAULT_HUNGER = 100;
-    private static int MAX_CONDITION = 150;
+    public static final int DEFAULT_CONDITION = 100;
+    public static final int MAX_CONDITION = 150;
 
-    String species;
-    String name;
-    int age;
-    int health;
-    int happiness;
-    int hunger;
-    Enclosure enclosure;
-    
+    private static final int PLAY_BOOST = 15;
+    private static final int FEED_BOOST = 10;
+    private static final int SLEEP_BOOST = 5;
 
-    /*
-     * REQUIRES: species and name has a non-zero length.
-     *           age >= 0
-     * EFFECTS:  this.species is set to species; this.name is set to name
-     *           this.age is set to age; health is set to DEFAULT_HEALTH.
-     *           happiness is set to DEFAULT_HAPPINESS.
-     *           hunger is set to DEFAULT_HUNGER
-     */
+    private final String species;
+    private final String name;
+    private final int age;
+    private int health;
+    private int happiness;
+    private int hunger;
+    private Enclosure enclosure;
+
+    // REQUIRES: species and name have non-zero length, age >= 0
+    // EFFECTS: creates an animal with the given species, name and age, every condition stat set to
+    //          DEFAULT_CONDITION and no enclosure
     public Animal(String species, String name, int age) {
         this.species = species;
         this.name = name;
         this.age = age;
-        this.health = DEFAULT_HEALTH;
-        this.hunger = DEFAULT_HUNGER;
-        this.happiness = DEFAULT_HAPPINESS;
+        this.health = DEFAULT_CONDITION;
+        this.happiness = DEFAULT_CONDITION;
+        this.hunger = DEFAULT_CONDITION;
     }
 
-
     // MODIFIES: this
-    // EFFECTs: increase the animal's happiness by 15
-    //          if happiness becomes greater than MAX_CONDITION, happiness = MAX_CONDITION.
+    // EFFECTS: increases happiness by PLAY_BOOST, capped at MAX_CONDITION
     public void play() {
-        this.happiness += 15;
-        if (this.happiness > MAX_CONDITION) {
-            this.happiness = MAX_CONDITION;
-        }
+        happiness = clamp(happiness + PLAY_BOOST);
     }
 
     // MODIFIES: this
-    // EFFECTS: increase the animal's hunger by 10
-    //          if hunger becomes greater than MAX_CONDITION, hunger = MAX_CONDITION.
+    // EFFECTS: increases hunger (fullness) by FEED_BOOST, capped at MAX_CONDITION
     public void feed() {
-        this.hunger += 10;
-        if (this.hunger > MAX_CONDITION) {
-            this.hunger = MAX_CONDITION;
-        }
+        hunger = clamp(hunger + FEED_BOOST);
     }
 
     // MODIFIES: this
-    // EFFECTS: increase the animal's health by 5
-    //          if health becoms greater than MAX_CONDITION, health = MAX_CONDITION
+    // EFFECTS: increases health by SLEEP_BOOST, capped at MAX_CONDITION
     public void sleep() {
-        this.health += 5;
-        if (this.health > MAX_CONDITION) {
-            this.health = MAX_CONDITION;
-        }
+        health = clamp(health + SLEEP_BOOST);
     }
 
     // MODIFIES: this
-    // EFFECTS: assign enclosure to animal, if animal already have enclosure, do nothing
-    public void assign(Enclosure enclosure) {
-        if (this.enclosure == null) {
-            this.enclosure = enclosure;
-        }
+    // EFFECTS: restores every condition stat to MAX_CONDITION
+    public void treat() {
+        health = MAX_CONDITION;
+        happiness = MAX_CONDITION;
+        hunger = MAX_CONDITION;
     }
 
-    // REQUIRES: dest to exist
-    // EFFECTS: swap animal's enclosure to dest
-    //          if dest is the same as current enclosure,  do nothing
-    public void changeEnclosure(Enclosure dest) {
-        this.enclosure = dest;
+    // EFFECTS: returns the average of health, happiness and hunger
+    public int getAverageCondition() {
+        return (health + happiness + hunger) / 3;
     }
 
-    // EFFECTS: restore the animal to full condition:
-    //          set this.health = MAX_CONDITION 
-    //          set this.hunger = MAX_CONDITION
-    //          set this.happiness = MAX_CONDITION
-    public void treatment() {
-        this.health = MAX_CONDITION;
-        this.hunger = MAX_CONDITION;
-        this.happiness = MAX_CONDITION;
+    // EFFECTS: returns value limited to the range [0, MAX_CONDITION]
+    private static int clamp(int value) {
+        return Math.max(0, Math.min(value, MAX_CONDITION));
+    }
+
+    public String getSpecies() {
+        return species;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getAge() {
+        return age;
     }
 
     public int getHealth() {
-        return this.health; 
+        return health;
     }
 
-    public int getHappinness() {
-        return this.happiness;
+    public int getHappiness() {
+        return happiness;
+    }
+
+    public int getHunger() {
+        return hunger;
+    }
+
+    public Enclosure getEnclosure() {
+        return enclosure;
+    }
+
+    public boolean hasEnclosure() {
+        return enclosure != null;
+    }
+
+    // EFFECTS: returns the name of this animal's enclosure, or null if it has none
+    public String getEnclosureName() {
+        return hasEnclosure() ? enclosure.getName() : null;
+    }
+
+    public void setHealth(int health) {
+        this.health = clamp(health);
+    }
+
+    public void setHappiness(int happiness) {
+        this.happiness = clamp(happiness);
+    }
+
+    public void setHunger(int hunger) {
+        this.hunger = clamp(hunger);
+    }
+
+    // Only Enclosure calls this, so an animal and its enclosure always agree on where it lives
+    void setEnclosure(Enclosure enclosure) {
+        this.enclosure = enclosure;
     }
 
     @Override
     public String toString() {
-        return name + " (" + species + ") " 
-            + " ❤️ " + getHealth() + "   "
-            + " 😊 " + getHappinness() + "   "
-            + " 🍖 " + getHunger();
+        return name + " (" + species + ") "
+                + " ❤️ " + health + "   "
+                + " 😊 " + happiness + "   "
+                + " 🍖 " + hunger;
     }
 
-    public int getHunger() {
-        return this.hunger;
-    }
-
-    public String getSpecie() {
-        return this.species;
-    }
-
-    public String getName() {
-        return this.name;
-    }
-
-    public Enclosure getEnclosure() {
-        return this.enclosure;
-    }
-
-    public String getEnclosureName() {
-        return this.enclosure.getName();
-    }
-
-    public int getAge() {
-        return this.age;
-    }
-
-    public void setToNoEnclosure() {
-        this.enclosure = null;
-    }
-
-    public void setHealth(int health) {
-        this.health = health;
-    }
-
-    public void setHappiness(int happiness) {
-        this.happiness = happiness;
-    }
-
-    public void setHunger(int hunger) {
-        this.hunger = hunger;
-    }
-
-    public void setEnclosure(Enclosure e) {
-        this.enclosure = e;
-    }
-
-    // EFFECTS: returns an animal as a JSON object
+    // EFFECTS: returns this animal as a JSON object
     @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
-        json.put("Species", this.species);
-        json.put("Name", this.name);
-        json.put("Age", this.age);
-        json.put("Health", this.health);
-        json.put("Happiness", this.happiness);
-        json.put("Hunger", this.hunger);
-        json.put("Enclosure", this.enclosure.getName());
+        json.put("Species", species);
+        json.put("Name", name);
+        json.put("Age", age);
+        json.put("Health", health);
+        json.put("Happiness", happiness);
+        json.put("Hunger", hunger);
+        json.put("Enclosure", hasEnclosure() ? enclosure.getName() : "");
         return json;
     }
 }

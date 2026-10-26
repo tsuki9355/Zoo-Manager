@@ -1,166 +1,122 @@
 package model;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import persistence.Writable;
 
-// Represent an enclosure with capacity, number of animals in the enclosure and a list of animals.
+// Represents a named enclosure that holds up to capacity animals and has a cleanliness level
 public class Enclosure implements Writable {
 
-    private static int DEFAULT_CAPACITY = 5;
-    private static int DEFAULT_CLEANESS = 10;
-    private static int MAX_CLEAN = 15;
+    public static final int DEFAULT_CAPACITY = 5;
+    public static final int DEFAULT_CLEANLINESS = 10;
+    public static final int MAX_CLEANLINESS = 15;
 
-    private int numAnimals;
-    private ArrayList<Animal> animals;
-    private int cleaness;
+    private static final int CLEAN_BOOST = 2;
+
+    private final String name;
+    private final List<Animal> animals;
     private int capacity;
-    private String name;
+    private int cleanliness;
 
-    /*
-     * EFFECTS: numAnimals is set to 0, list of animals is empty
-     *          cleaness is set to DEFAULT_CLEANESS
-     *          capacity is set to DEFAULT_CAPACITY
-     *          this.name is set to name
-     */
+    // EFFECTS: creates an empty enclosure with the given name, DEFAULT_CAPACITY and DEFAULT_CLEANLINESS
     public Enclosure(String name) {
-        this.numAnimals = 0;
-        animals = new ArrayList<Animal>();
-        this.cleaness = DEFAULT_CLEANESS;
-        this.capacity = DEFAULT_CAPACITY;
         this.name = name;
+        this.animals = new ArrayList<>();
+        this.capacity = DEFAULT_CAPACITY;
+        this.cleanliness = DEFAULT_CLEANLINESS;
+    }
+
+    // MODIFIES: this, animal, animal's previous enclosure
+    // EFFECTS: if this enclosure has room and doesn't already hold animal, moves animal in here
+    //          (taking it out of its previous enclosure, if any) and returns true;
+    //          otherwise does nothing and returns false
+    public boolean addAnimal(Animal animal) {
+        if (contains(animal) || isFull()) {
+            return false;
+        }
+        if (animal.hasEnclosure()) {
+            animal.getEnclosure().removeAnimal(animal);
+        }
+        animals.add(animal);
+        animal.setEnclosure(this);
+        return true;
+    }
+
+    // MODIFIES: this, animal
+    // EFFECTS: if animal is in this enclosure, removes it, leaves it without an enclosure and returns true;
+    //          otherwise returns false
+    public boolean removeAnimal(Animal animal) {
+        if (!animals.remove(animal)) {
+            return false;
+        }
+        animal.setEnclosure(null);
+        return true;
     }
 
     // MODIFIES: this
-    // EFFECTS: Add animal to animals if numAnimals < capacity and if animal doesn't already exist, 
-    //          otherwise do nothing
-    public void addAnimal(Animal animal) {
-        if (getExist(animal) == false && numAnimals < capacity) {
-            animals.add(animal);
-            this.numAnimals++;
-        }
-    }
-
-    // MODIFIES: this
-    // EFFECTS: remove animal from animals along with the corresponding enclosure
-    //          otherwise do nothing 
-    public void removeAnimal(Animal animal) {
-        if (getExist(animal)) {
-            animals.remove(animal);
-            this.numAnimals--;
-        }
-    }
-
-    // EFFECTS: return the index of animal in animals
-    public int getAnimalIndex(Animal animal) {
-        int index = 0;
-        for (Animal a : animals) {
-            if (a == animal) {
-                break;
-            }
-            index++;
-        }
-        return index;
-    }
-
-    // MODIFIES: this
-    // EFFECTS:  increase the cleaness by 2, if clean > MAX_CLEAN, clean = MAX_CLEAN
+    // EFFECTS: increases cleanliness by CLEAN_BOOST, capped at MAX_CLEANLINESS
     public void clean() {
-        this.cleaness += 2;
-        if (this.cleaness > MAX_CLEAN) {
-            this.cleaness = MAX_CLEAN;
-        }
+        setCleanliness(cleanliness + CLEAN_BOOST);
     }
 
-    // EFFECTS: returns true if numAnimals < Capacity and false otherwise
-    public boolean canAcceptAnimal() {
-        return this.numAnimals < this.capacity;
+    public boolean contains(Animal animal) {
+        return animals.contains(animal);
     }
 
-    public int getCleaness() {
-        return this.cleaness;
+    public boolean isFull() {
+        return animals.size() >= capacity;
     }
 
-    public int getNumAnimal() {
-        return this.numAnimals;
-    }
-
-    public int getCapacity() {
-        return this.capacity;
+    public boolean isEmpty() {
+        return animals.isEmpty();
     }
 
     public String getName() {
-        return this.name;
+        return name;
     }
 
-    public int getAnimalListSize() {
+    // EFFECTS: returns a read-only view of the animals in this enclosure
+    public List<Animal> getAnimals() {
+        return Collections.unmodifiableList(animals);
+    }
+
+    public int getNumAnimals() {
         return animals.size();
     }
 
-    public ArrayList<Animal> getAllAnimals() {
-        return this.animals;
+    public int getCapacity() {
+        return capacity;
+    }
+
+    public int getCleanliness() {
+        return cleanliness;
+    }
+
+    public void setCapacity(int capacity) {
+        this.capacity = Math.max(0, capacity);
+    }
+
+    public void setCleanliness(int cleanliness) {
+        this.cleanliness = Math.max(0, Math.min(cleanliness, MAX_CLEANLINESS));
     }
 
     @Override
     public String toString() {
-        return getName() + "  ✨ " + getCleaness();
+        return name + "  ✨ " + cleanliness;
     }
 
-    public Animal getAnimal(int index) {
-        return animals.get(index);
-    }
-
-    public Animal getLastAnimal() {
-        return animals.get(numAnimals - 1);
-    }
-
-    public Animal getFirstAnimal() {
-        return animals.get(0);
-    }
-
-    public boolean getExist(Animal animal) {
-        return animals.contains(animal);
-    }
-
-    public void setCleaness(int cleaness) {
-        this.cleaness = cleaness;
-    }
-
-    public void setCapacity(int capacity) {
-        this.capacity = capacity;
-    }
-
-    public void setNumAnimals(int numAnimals) {
-        this.numAnimals = numAnimals;
-    }
-
-    public void setAnimals(ArrayList<Animal> a) {
-        this.animals = a;
-    }
-
-    // return an enclosure as a JSON object
+    // EFFECTS: returns this enclosure as a JSON object; its animals are saved by the zoo, each
+    //          recording the name of the enclosure it lives in
     @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
-        json.put("numAnimals", this.numAnimals);
-        json.put("Animals", animalsToJson());
-        json.put("Cleaness", this.cleaness);
-        json.put("Name", this.name);
-        json.put("Capacity", this.capacity);
+        json.put("Name", name);
+        json.put("Capacity", capacity);
+        json.put("Cleaness", cleanliness);  // key spelling kept so existing save files still load
         return json;
     }
-
-    // returns animals in this enclosure as a JSON array
-    private JSONArray animalsToJson() {
-        JSONArray jsonArray = new JSONArray();
-        for (Animal a : animals) {
-            jsonArray.put(a.toJson());
-        }
-        return jsonArray;
-    }
-
 }

@@ -1,284 +1,288 @@
 package model;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import persistence.Writable;
 
-// Represents a zoo with a list of Enclosures, a list of Animals, and the money the zoo have
+// Represents a zoo with a name, money, and the enclosures and animals it owns.
+// Animal and enclosure names are unique within a zoo.
 public class Zoo implements Writable {
 
-    private static int INITIAL_MONEY = 1000;
-    private static int INCOME_MULTIPLIER = 10;
- 
-    private ArrayList<Enclosure> enclosures;
-    private ArrayList<Animal> animals;
-    private int money;
-    private String name;
+    public static final String WAITING_ROOM = "Waiting Room";
+    public static final int INITIAL_MONEY = 1000;
+    public static final int MAX_RATING = 5;
 
-    /*
-     * EFFECTS: set money = INITIAL_MONEY;
-     *          create an empty list of enclosures and animals
-     */
+    private static final int INCOME_PER_COLLECTION = 20;
+
+    // Outcome of trying to put an animal into an enclosure
+    public enum AssignResult {
+        ASSIGNED, NO_SUCH_ANIMAL, NO_SUCH_ENCLOSURE, ALREADY_THERE, ENCLOSURE_FULL
+    }
+
+    private final String name;
+    private final List<Enclosure> enclosures;
+    private final List<Animal> animals;
+    private int money;
+
+    // EFFECTS: creates a zoo with the given name, INITIAL_MONEY and no enclosures or animals
     public Zoo(String name) {
         this.name = name;
         this.money = INITIAL_MONEY;
-        enclosures = new ArrayList<Enclosure>();
-        animals = new ArrayList<Animal>();
+        this.enclosures = new ArrayList<>();
+        this.animals = new ArrayList<>();
     }
 
-    // MODIFIES:  this
-    // EFFECTS:   increase the money by the number of animals + 2 * INCOME_MULTIPLIER
+    // MODIFIES: this
+    // EFFECTS: adds INCOME_PER_COLLECTION to the zoo's money
     public void increaseIncome() {
-        this.money = this.money + 2 * INCOME_MULTIPLIER;
+        money += INCOME_PER_COLLECTION;
     }
 
     // MODIFIES: this
-    // EFFECTS: create a new enclosure with the given name and adds it to enclosures
-    public void addEnclosure(String name) {
-        Enclosure newEnclosure = new Enclosure(name);
-        enclosures.add(newEnclosure);
-        EventLog.getInstance().logEvent(new Event(name + " added to " + this.name + "."));
+    // EFFECTS: creates an enclosure with the given name and adds it to the zoo;
+    //          returns false (and does nothing) if an enclosure with that name already exists
+    public boolean addEnclosure(String name) {
+        return addEnclosure(new Enclosure(name));
     }
 
     // MODIFIES: this
-    // EFFECTS: add a new enclosure e to zoo
-    public void addEnclosure(Enclosure e) {
-        enclosures.add(e);
-        EventLog.getInstance().logEvent(new Event(e.getName() + " added to " + this.name + "."));
-    }
-
-    // MODIFIES: this
-    // EFFECTS:  remove enclosure from enclosures if the name exist and if there are no animal
-    //           in that enclosure, otherwise do nothing
-    public void removeEnclosure(String name) {
-        int index = 0;
-        for (Enclosure e : enclosures) {
-            if (e.getName() == name && e.getNumAnimal() == 0) {
-                enclosures.remove(index);
-                EventLog.getInstance().logEvent(new Event(e.getName() + " removed from " + this.name + "."));
-                break;
-            }
-            index++;
+    // EFFECTS: adds enclosure to the zoo; returns false (and does nothing) if its name is taken
+    public boolean addEnclosure(Enclosure enclosure) {
+        if (findEnclosure(enclosure.getName()) != null) {
+            return false;
         }
+        enclosures.add(enclosure);
+        log(enclosure.getName() + " added to " + name + ".");
+        return true;
     }
 
     // MODIFIES: this
-    // EFFECTS: create a new animal with the given name, species and age to animals
-    public void addAnimal(String species, String name, int age) {
-        Animal newAnimal = new Animal(species, name, age);
-        animals.add(newAnimal);
-        EventLog.getInstance().logEvent(new Event(name + " added to " + this.name + "."));
+    // EFFECTS: removes the enclosure with the given name if it exists and is empty and returns true;
+    //          otherwise returns false
+    public boolean removeEnclosure(String enclosureName) {
+        Enclosure enclosure = findEnclosure(enclosureName);
+        if (enclosure == null || !enclosure.isEmpty()) {
+            return false;
+        }
+        enclosures.remove(enclosure);
+        log(enclosureName + " removed from " + name + ".");
+        return true;
     }
 
     // MODIFIES: this
-    // EFFECTS: add an animal a to zoo
-    public void addAnimal(Animal a) {
-        animals.add(a);
-        EventLog.getInstance().logEvent(new Event(name + " added to " + this.name + "."));
-    }
-
-    // MODIFIES: this, Enclosure
-    // EFFECTS: cleans all enclosure(calls clean() on all enclosure)
-    public void cleanAllEnclosure() {
-        for (Enclosure e : enclosures) {
-            e.clean();
+    // EFFECTS: returns the waiting room enclosure, creating it first if the zoo doesn't have one
+    public Enclosure getOrCreateWaitingRoom() {
+        Enclosure waitingRoom = findEnclosure(WAITING_ROOM);
+        if (waitingRoom == null) {
+            waitingRoom = new Enclosure(WAITING_ROOM);
+            addEnclosure(waitingRoom);
         }
+        return waitingRoom;
     }
 
-    // REQUIRES: both animalName and enclosureName must exist in the Zoo
-    // MODIFIES: this, animal, enclosure
-    // EFFECTS: adds the animal with animalName to the enclosure with enclosureName if there is capacity
-    //          also sets the animal enclosure to enclosure with the given name
-    public void assignAnimalToEnclosure(String animalName, String enclosureName) {
-        int animalIndex = getAnimalIndex(animalName);
-        int enclosureIndex = getEnclosureIndex(enclosureName);
-        Enclosure e = enclosures.get(enclosureIndex);
-        Animal a = animals.get(animalIndex);
-        if (e.canAcceptAnimal()) {
-            e.addAnimal(a);
-            a.assign(e);
-            EventLog.getInstance().logEvent(new Event(animalName + " added to " + enclosureName + "."));
+    // MODIFIES: this
+    // EFFECTS: creates an animal with the given species, name and age and adds it to the zoo;
+    //          returns false (and does nothing) if an animal with that name already exists
+    public boolean addAnimal(String species, String animalName, int age) {
+        return addAnimal(new Animal(species, animalName, age));
+    }
+
+    // MODIFIES: this
+    // EFFECTS: adds animal to the zoo; returns false (and does nothing) if its name is taken
+    public boolean addAnimal(Animal animal) {
+        if (findAnimal(animal.getName()) != null) {
+            return false;
         }
+        animals.add(animal);
+        log(animal.getName() + " added to " + name + ".");
+        return true;
     }
- 
-    // REQUIRES: both animalName and enclosureName must exist in the Zoo
-    // MODIFIES: this, animal, enclosure
-    // EFFECTS: removes animal with animalName from the enclosure with enclosureName if exists
-    //          remove animal's enclosure
-    public void removeAnimalFromEnclosure(String animalName, String enclosureName) {
-        int animalIndex = getAnimalIndex(animalName);
-        int enclosureIndex = getEnclosureIndex(enclosureName);
-        Animal a = animals.get(animalIndex);
-        Enclosure e = enclosures.get(enclosureIndex);
-        e.removeAnimal(a);
-        a.setToNoEnclosure();
-        EventLog.getInstance().logEvent(new Event(animalName + " removed from " + enclosureName + "."));
-    } 
 
-    // MODIFIES: this, animal
-    // EFFECTS: feed all animals (calls feed() on every animal)
+    // MODIFIES: this, the animal, the enclosures involved
+    // EFFECTS: moves the animal with animalName into the enclosure with enclosureName
+    //          (out of its current enclosure, if any) and reports the outcome
+    public AssignResult assignAnimalToEnclosure(String animalName, String enclosureName) {
+        Animal animal = findAnimal(animalName);
+        Enclosure enclosure = findEnclosure(enclosureName);
+        if (animal == null) {
+            return AssignResult.NO_SUCH_ANIMAL;
+        } else if (enclosure == null) {
+            return AssignResult.NO_SUCH_ENCLOSURE;
+        } else if (enclosure.contains(animal)) {
+            return AssignResult.ALREADY_THERE;
+        } else if (enclosure.isFull()) {
+            return AssignResult.ENCLOSURE_FULL;
+        }
+        enclosure.addAnimal(animal);
+        log(animalName + " added to " + enclosureName + ".");
+        return AssignResult.ASSIGNED;
+    }
+
+    // MODIFIES: this, the animal, the enclosure
+    // EFFECTS: if the animal with animalName lives in the enclosure with enclosureName, removes it from
+    //          there (leaving it without an enclosure) and returns true; otherwise returns false
+    public boolean removeAnimalFromEnclosure(String animalName, String enclosureName) {
+        Animal animal = findAnimal(animalName);
+        Enclosure enclosure = findEnclosure(enclosureName);
+        if (animal == null || enclosure == null || !enclosure.removeAnimal(animal)) {
+            return false;
+        }
+        log(animalName + " removed from " + enclosureName + ".");
+        return true;
+    }
+
+    // MODIFIES: the animal
+    // EFFECTS: feeds the animal with the given name; returns false if there is no such animal
+    public boolean feedAnimal(String animalName) {
+        Animal animal = findAnimal(animalName);
+        if (animal != null) {
+            animal.feed();
+        }
+        return animal != null;
+    }
+
+    // MODIFIES: the animal
+    // EFFECTS: plays with the animal with the given name; returns false if there is no such animal
+    public boolean playAnimal(String animalName) {
+        Animal animal = findAnimal(animalName);
+        if (animal != null) {
+            animal.play();
+        }
+        return animal != null;
+    }
+
+    // MODIFIES: the animal
+    // EFFECTS: puts the animal with the given name to sleep; returns false if there is no such animal
+    public boolean sleepAnimal(String animalName) {
+        Animal animal = findAnimal(animalName);
+        if (animal != null) {
+            animal.sleep();
+        }
+        return animal != null;
+    }
+
+    // MODIFIES: the animal
+    // EFFECTS: fully treats the animal with the given name; returns false if there is no such animal
+    public boolean treatAnimal(String animalName) {
+        Animal animal = findAnimal(animalName);
+        if (animal != null) {
+            animal.treat();
+        }
+        return animal != null;
+    }
+
+    // MODIFIES: every animal
+    // EFFECTS: feeds every animal in the zoo
     public void feedAllAnimals() {
-        for (Animal a : animals) {
-            a.feed();
-        }
+        animals.forEach(Animal::feed);
     }
 
-    // MODIFIES: this, animal
-    // EFFECTS: call feed with the animal with the given name, if name doesn't exist then do nothing
-    public void feedAnimal(String name)  {
-        int index = getAnimalIndex(name);
-        Animal a = animals.get(index);
-        a.feed();
-    }
-
-    // MODIFIES: this, animal
-    // EFFECTS: call sleep with the animal with the given name, if name doesn't exist then do nothing
-    public void sleepAnimal(String name) {
-        int index = getAnimalIndex(name);
-        Animal a = animals.get(index);
-        a.sleep();
-    }
-
-    // MODIFIES: this, animal
-    // EFFECTS: call play with the animal with the given name, if name doesn't exist then do nothing
-    public void playAnimal(String name) {
-        int index = getAnimalIndex(name);
-        Animal a = animals.get(index);
-        a.play();
-    }
-
-    // MODIFIES: this, animal
-    // EFFECTS: play with all animals (calls play() on every animal)
+    // MODIFIES: every animal
+    // EFFECTS: plays with every animal in the zoo
     public void playWithAllAnimals() {
-        for (Animal a : animals) {
-            a.play();
+        animals.forEach(Animal::play);
+    }
+
+    // MODIFIES: every animal
+    // EFFECTS: puts every animal in the zoo to sleep
+    public void sleepAllAnimals() {
+        animals.forEach(Animal::sleep);
+    }
+
+    // MODIFIES: every enclosure
+    // EFFECTS: cleans every enclosure in the zoo
+    public void cleanAllEnclosures() {
+        enclosures.forEach(Enclosure::clean);
+    }
+
+    // EFFECTS: returns a visitor rating from 0 to MAX_RATING stars, based mostly on how well the animals
+    //          are doing and partly on how clean the enclosures are; a zoo with no animals scores 0
+    public int getRating() {
+        if (animals.isEmpty()) {
+            return 0;
         }
+        double condition = animals.stream().mapToInt(Animal::getAverageCondition).average().orElse(0);
+        double cleanliness = enclosures.stream().mapToInt(Enclosure::getCleanliness).average().orElse(0);
+        double score = 0.7 * condition / Animal.MAX_CONDITION + 0.3 * cleanliness / Enclosure.MAX_CLEANLINESS;
+        return (int) Math.round(score * MAX_RATING);
     }
 
-    // MODIFIES: this, animal
-    // EFFECTS: make all animals sleep (class sleep() on every animal)
-    public void makeAllAnimalSleep() {
-        for (Animal a : animals) {
-            a.sleep();
-        }
-    }
-
-    // REQUIRES: animalName to exist in the zoo
-    // MODIFIES: this, animal
-    // EFFECTS: restore the animal with animalName to full condition (calls treatment())
-    public void treatAnimal(String animalName) {
-        int index = getAnimalIndex(animalName);
-        Animal a = animals.get(index);
-        a.treatment();
-    }
-
-    // EFFECTS: return a list of all animals
-    public ArrayList<Animal> getAllAnimals() {
-        return animals;
-    }
-
-    // EFFECTS: return the index of animal with given name in animals
-    public int getAnimalIndex(String name) {
-        int index = 0;
+    // EFFECTS: returns the animal with the given name, or null if there is none
+    public Animal findAnimal(String animalName) {
         for (Animal animal : animals) {
-            if (animal.name == name) {
-                break;
-            }
-            index++;
-        }
-        return index;
-    }
-
-    // EFFECTS: return the index of enclosure with given name in enclosures
-    public int getEnclosureIndex(String name) {
-        int index = 0;
-        for (Enclosure e : enclosures) {
-            if (e.getName() == name) {
-                break;
-            }
-            index++;
-        }
-        return index;
-    }
-
-    // EFFECTS: return the number of animals in the zoo
-    public int getNumAnimals() {
-        return animals.size();
-    }
-
-    // EFFECTS: return the number of enclosures in the zoo
-    public int getNumEnclosures() {
-        return enclosures.size();
-    }
-
-    // EFFECTS: return the zoo name
-    public String getZooName() {
-        return this.name;
-    }
-
-    // EFFECTS: return the zoo money
-    public int getZooMoney() {
-        return this.money;
-    }
-
-    // EFFECTS: return the enclosure's name in enclosures at index
-    public String getEnclosureName(int index) {
-        Enclosure e = enclosures.get(index);
-        return e.getName();
-    }
-
-    // EFFECTS: return the number of animals in the given enclosure
-    public int getNumAnimalInEnclosure(Enclosure enclosure) {
-        return enclosure.getAnimalListSize();
-    }
-
-    // EFFECTS: return a list of all enclosures
-    public ArrayList<Enclosure> getAllEnclosure() {
-        return enclosures;
-    }
-
-    // EFFECTS: set the animal's enclosure to the enclosure with the given name
-    public void setEnclosureByName(Animal a, String name) {
-        for (Enclosure e : enclosures) {
-            if (e.getName() == name) {
-                a.setEnclosure(e);
-                break;
+            if (animal.getName().equals(animalName)) {
+                return animal;
             }
         }
+        return null;
+    }
+
+    // EFFECTS: returns the enclosure with the given name, or null if there is none
+    public Enclosure findEnclosure(String enclosureName) {
+        for (Enclosure enclosure : enclosures) {
+            if (enclosure.getName().equals(enclosureName)) {
+                return enclosure;
+            }
+        }
+        return null;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getMoney() {
+        return money;
     }
 
     public void setMoney(int money) {
         this.money = money;
     }
 
-    // EFFECTS: return zoo as a JSON Object
+    // EFFECTS: returns a read-only view of the zoo's animals
+    public List<Animal> getAnimals() {
+        return Collections.unmodifiableList(animals);
+    }
+
+    // EFFECTS: returns a read-only view of the zoo's enclosures
+    public List<Enclosure> getEnclosures() {
+        return Collections.unmodifiableList(enclosures);
+    }
+
+    public int getNumAnimals() {
+        return animals.size();
+    }
+
+    public int getNumEnclosures() {
+        return enclosures.size();
+    }
+
+    // EFFECTS: records description in the event log
+    private void log(String description) {
+        EventLog.getInstance().logEvent(new Event(description));
+    }
+
+    // EFFECTS: returns this zoo as a JSON object
     @Override
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
-        json.put("Name", this.name);
-        json.put("Money", this.money);
-        json.put("Animals", animalsToJson());
-        json.put("Enclosures", enclosuresToJson());
+        json.put("Name", name);
+        json.put("Money", money);
+        json.put("Enclosures", toJsonArray(enclosures));
+        json.put("Animals", toJsonArray(animals));
         return json;
     }
 
-    // EFFECTS: return animals in this zoo as a JSON array
-    private JSONArray animalsToJson() {
+    // EFFECTS: returns the given items as a JSON array
+    private static JSONArray toJsonArray(List<? extends Writable> items) {
         JSONArray jsonArray = new JSONArray();
-        for (Animal a : animals) {
-            jsonArray.put(a.toJson());
-        }
-        return jsonArray;
-    }
-
-    // EFFECTS: returns enclosures in this zoo as a JSON array
-    private JSONArray enclosuresToJson() {
-        JSONArray jsonArray = new JSONArray();
-        for (Enclosure e : enclosures) {
-            jsonArray.put(e.toJson());
+        for (Writable item : items) {
+            jsonArray.put(item.toJson());
         }
         return jsonArray;
     }

@@ -2,7 +2,12 @@ package model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Arrays;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +15,7 @@ import org.junit.jupiter.api.Test;
 public class EnclosureTest {
 
     private Enclosure enclosureA;
+    private Enclosure enclosureB;
 
     private Animal animalA;
     private Animal animalB;
@@ -21,6 +27,7 @@ public class EnclosureTest {
     @BeforeEach
     void runBefore() {
         enclosureA = new Enclosure("Orca's Enclosure");
+        enclosureB = new Enclosure("Penguin's Enclosure");
         animalA = new Animal("Penguin", "pingu", 3);
         animalB = new Animal("Orca", "tuki", 2);
         animalC = new Animal("Bat", "Xavier", 2);
@@ -31,103 +38,74 @@ public class EnclosureTest {
 
     @Test
     void testConstructor() {
-        assertEquals(0, enclosureA.getNumAnimal());
-        assertEquals(10, enclosureA.getCleaness());
+        assertEquals(0, enclosureA.getNumAnimals());
+        assertEquals(10, enclosureA.getCleanliness());
         assertEquals(5, enclosureA.getCapacity());
         assertEquals("Orca's Enclosure", enclosureA.getName());
-        assertEquals(0, enclosureA.getAnimalListSize());
+        assertTrue(enclosureA.isEmpty());
+        assertFalse(enclosureA.isFull());
     }
-
-    @Test
-    void testGetAnimalIndexEmpty() {
-        assertEquals(0, enclosureA.getAnimalIndex(animalA));
-    }
-
 
     @Test
     void testAddAnimal() {
-        enclosureA.addAnimal(animalA);
-        assertEquals(animalA, enclosureA.getAnimal(0));
-    }
-
-    @Test
-    void testAddAnimalMultiple() {
-        enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        assertEquals(animalB, enclosureA.getAnimal(1));
+        assertTrue(enclosureA.addAnimal(animalA));
+        assertEquals(Arrays.asList(animalA), enclosureA.getAnimals());
+        assertEquals(enclosureA, animalA.getEnclosure());
     }
 
     @Test
     void testAddAnimalTwice() {
         enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalA);
-        assertEquals(1, enclosureA.getNumAnimal());
+        assertFalse(enclosureA.addAnimal(animalA));
+        assertEquals(1, enclosureA.getNumAnimals());
     }
 
     @Test
     void testAddAnimalCap() {
-        enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        enclosureA.addAnimal(animalC);
-        enclosureA.addAnimal(animalD);
-        enclosureA.addAnimal(animalE);
-        enclosureA.addAnimal(animalF);
-        assertEquals(animalE, enclosureA.getLastAnimal());
+        for (Animal a : Arrays.asList(animalA, animalB, animalC, animalD, animalE)) {
+            assertTrue(enclosureA.addAnimal(a));
+        }
+        assertTrue(enclosureA.isFull());
+        assertFalse(enclosureA.addAnimal(animalF));
+        assertEquals(5, enclosureA.getNumAnimals());
+        assertNull(animalF.getEnclosure());
     }
 
     @Test
-    void testRemoveAnimal() {
+    void testAddAnimalMovesFromPreviousEnclosure() {
         enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        enclosureA.removeAnimal(animalB);
-        assertEquals(animalA, enclosureA.getLastAnimal());
-        assertEquals(1, enclosureA.getNumAnimal());
-    }
-
-    @Test
-    void testRemoveAnimalMultiple() {
-        enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        enclosureA.addAnimal(animalC);
-        enclosureA.addAnimal(animalD);
-        enclosureA.removeAnimal(animalA);
-        enclosureA.removeAnimal(animalD);
-        assertEquals(animalC, enclosureA.getLastAnimal());
-        assertEquals(2, enclosureA.getNumAnimal());
-    }
-
-    @Test
-    void testRemoveAnimalCap() {
-        enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        enclosureA.removeAnimal(animalA);
-        enclosureA.removeAnimal(animalB);
-        enclosureA.removeAnimal(animalB);
-        assertEquals(0, enclosureA.getNumAnimal());
+        assertTrue(enclosureB.addAnimal(animalA));
+        assertFalse(enclosureA.contains(animalA));
+        assertTrue(enclosureB.contains(animalA));
+        assertEquals(enclosureB, animalA.getEnclosure());
     }
 
     @Test
     void testRemoveAnimalTwice() {
         enclosureA.addAnimal(animalA);
         enclosureA.addAnimal(animalB);
-        enclosureA.addAnimal(animalC);
-        enclosureA.removeAnimal(animalC);
-        enclosureA.removeAnimal(animalC);
-        assertEquals(animalB, enclosureA.getLastAnimal());
-        assertEquals(2, enclosureA.getNumAnimal());
+        assertTrue(enclosureA.removeAnimal(animalB));
+        assertFalse(enclosureA.removeAnimal(animalB));
+        assertEquals(1, enclosureA.getNumAnimals());
+    }
+
+    @Test
+    void testRemoveAnimalNotHere() {
+        enclosureB.addAnimal(animalA);
+        assertFalse(enclosureA.removeAnimal(animalA));
+        assertEquals(enclosureB, animalA.getEnclosure());
+    }
+
+    @Test
+    void testGetAnimalsIsReadOnly() {
+        List<Animal> animals = enclosureA.getAnimals();
+        assertThrows(UnsupportedOperationException.class, () -> animals.add(animalA));
     }
 
     @Test
     void testClean() {
         enclosureA.clean();
-        assertEquals(12, enclosureA.getCleaness());
-    }
-
-    @Test
-    void testCleanMultiple() {
-        enclosureA.clean();
-        enclosureA.clean();
-        assertEquals(14, enclosureA.getCleaness());
+        assertEquals(12, enclosureA.getCleanliness());
     }
 
     @Test
@@ -135,37 +113,16 @@ public class EnclosureTest {
         enclosureA.clean();
         enclosureA.clean();
         enclosureA.clean();
-        assertEquals(15, enclosureA.getCleaness());
-    }
-
-    @Test 
-    void testCanAcceptAnimal() {
-        assertTrue(enclosureA.canAcceptAnimal());
+        assertEquals(15, enclosureA.getCleanliness());
     }
 
     @Test
-    void testCanAcceptAnimalCap() {
+    void testSetters() {
+        enclosureA.setCapacity(1);
+        enclosureA.setCleanliness(99);
+        assertEquals(1, enclosureA.getCapacity());
+        assertEquals(15, enclosureA.getCleanliness());
         enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        enclosureA.addAnimal(animalC);
-        enclosureA.addAnimal(animalD);
-        enclosureA.addAnimal(animalE);
-        assertFalse(enclosureA.canAcceptAnimal());
+        assertTrue(enclosureA.isFull());
     }
-
-    @Test
-    void testGetAnimalIndex() {
-        enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        int index = enclosureA.getAnimalIndex(animalB);
-        assertEquals(1, index);
-    }
-
-    @Test
-    void testGetFirstAnimal() {
-        enclosureA.addAnimal(animalA);
-        enclosureA.addAnimal(animalB);
-        assertEquals(animalA, enclosureA.getFirstAnimal());
-    }
-
 }
