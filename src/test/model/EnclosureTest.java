@@ -44,6 +44,9 @@ public class EnclosureTest {
         assertEquals("Orca's Enclosure", enclosureA.getName());
         assertTrue(enclosureA.isEmpty());
         assertFalse(enclosureA.isFull());
+        assertFalse(enclosureA.isDirty());
+        assertFalse(enclosureA.isWaitingRoom());
+        assertTrue(new Enclosure(Zoo.WAITING_ROOM).isWaitingRoom());
     }
 
     @Test
@@ -87,6 +90,7 @@ public class EnclosureTest {
         assertTrue(enclosureA.removeAnimal(animalB));
         assertFalse(enclosureA.removeAnimal(animalB));
         assertEquals(1, enclosureA.getNumAnimals());
+        assertNull(animalB.getEnclosure());
     }
 
     @Test
@@ -104,16 +108,44 @@ public class EnclosureTest {
 
     @Test
     void testClean() {
+        enclosureA.setCleanliness(3);
+        assertTrue(enclosureA.isDirty());
         enclosureA.clean();
-        assertEquals(12, enclosureA.getCleanliness());
+        assertEquals(8, enclosureA.getCleanliness());
+        assertFalse(enclosureA.isDirty());
     }
 
     @Test
     void testCleanCap() {
         enclosureA.clean();
-        enclosureA.clean();
-        enclosureA.clean();
         assertEquals(15, enclosureA.getCleanliness());
+    }
+
+    @Test
+    void testPassNightResidentsMakeAMess() {
+        enclosureA.addAnimal(animalA);
+        enclosureA.addAnimal(animalB);
+        enclosureA.addAnimal(animalC);
+        new Hospital().admit(animalC);
+        enclosureA.passNight();
+        assertEquals(8, enclosureA.getCleanliness());
+    }
+
+    @Test
+    void testExpand() {
+        assertEquals(250, enclosureA.getExpansionCost());
+        assertTrue(enclosureA.expand());
+        assertEquals(7, enclosureA.getCapacity());
+        assertEquals(350, enclosureA.getExpansionCost());
+    }
+
+    @Test
+    void testExpandToMax() {
+        while (enclosureA.canExpand()) {
+            enclosureA.expand();
+        }
+        assertEquals(Enclosure.MAX_CAPACITY, enclosureA.getCapacity());
+        assertFalse(enclosureA.expand());
     }
 
     @Test

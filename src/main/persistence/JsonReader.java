@@ -33,10 +33,15 @@ public class JsonReader {
     }
 
     // EFFECTS: parses zoo from JSON object and returns it; enclosures are rebuilt first so each
-    //          animal can then be placed into the enclosure it names
+    //          animal can then be placed into the enclosure it names. Fields added in later versions
+    //          fall back to a new zoo's values, so older save files still load.
     private Zoo parseZoo(JSONObject json) {
         Zoo zoo = new Zoo(json.getString("Name"));
         zoo.setMoney(json.getInt("Money"));
+        zoo.setFood(json.optInt("Food", Zoo.INITIAL_FOOD));
+        zoo.setDay(json.optInt("Day", 1));
+        zoo.setLevel(json.optInt("Level", 1));
+        zoo.getHospital().setLevel(json.optInt("HospitalLevel", 1));
         for (Object enclosureJson : json.getJSONArray("Enclosures")) {
             zoo.addEnclosure(parseEnclosure((JSONObject) enclosureJson));
         }
@@ -61,11 +66,13 @@ public class JsonReader {
         animal.setHealth(json.getInt("Health"));
         animal.setHappiness(json.getInt("Happiness"));
         animal.setHunger(json.getInt("Hunger"));
+        animal.setDoneToday(json.optBoolean("PlayedToday"), json.optBoolean("RestedToday"));
         zoo.addAnimal(animal);
 
         Enclosure enclosure = zoo.findEnclosure(json.optString("Enclosure", ""));
         if (enclosure != null) {
             enclosure.addAnimal(animal);
         }
+        zoo.readmitPatient(animal, json.optInt("HospitalNights", 0));
     }
 }

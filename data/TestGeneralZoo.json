@@ -2,37 +2,50 @@
     "Money": 1000,
     "Animals": [
         {
+            "RestedToday": false,
             "Happiness": 100,
             "Hunger": 100,
+            "PlayedToday": false,
             "Health": 100,
+            "HospitalNights": 0,
             "Enclosure": "Waiting Room",
             "Species": "Orca",
             "Age": 16,
             "Name": "Tuki"
         },
         {
+            "RestedToday": false,
             "Happiness": 100,
             "Hunger": 100,
+            "PlayedToday": false,
             "Health": 100,
+            "HospitalNights": 0,
             "Enclosure": "Waiting Room",
             "Species": "Orca",
             "Age": 17,
             "Name": "Tukincho"
         },
         {
+            "RestedToday": false,
             "Happiness": 100,
             "Hunger": 100,
+            "PlayedToday": false,
             "Health": 100,
+            "HospitalNights": 0,
             "Enclosure": "Waiting Room",
             "Species": "Hippo",
             "Age": 7,
             "Name": "Bob"
         }
     ],
+    "HospitalLevel": 1,
+    "Level": 1,
     "Enclosures": [{
         "Capacity": 5,
         "Name": "Waiting Room",
         "Cleaness": 10
     }],
-    "Name": "Angus"
+    "Day": 1,
+    "Name": "Angus",
+    "Food": 20
 }

@@ -66,6 +66,11 @@ public class JsonReaderTest {
     void testReadZooWithDifferentStatus() {
         Zoo zoo = read("TestZooWithDifferentStatus.json");
         assertEquals(1020, zoo.getMoney());
+        // this file predates days, food and levels, so those start fresh
+        assertEquals(1, zoo.getDay());
+        assertEquals(Zoo.INITIAL_FOOD, zoo.getFood());
+        assertEquals(1, zoo.getLevel());
+        assertEquals(1, zoo.getHospital().getLevel());
 
         List<Animal> animals = zoo.getAnimals();
         assertAnimal(animals.get(0), "Orca", "Tuki", 16);

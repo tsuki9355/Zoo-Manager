@@ -5,10 +5,15 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+import java.util.function.Predicate;
+
 import model.Animal;
+import model.DayReport;
 import model.Enclosure;
 import model.Event;
 import model.EventLog;
+import model.Hospital;
+import model.Species;
 import model.Zoo;
 
 // Renders the zoo, its animals and enclosures as text for the console app
@@ -59,17 +64,108 @@ final class ZooView {
         System.out.println("  " + Ansi.paint(head + repeat('=', WIDTH - head.length()), Ansi.BLUE, Ansi.BOLD));
     }
 
-    // EFFECTS: prints a one-glance summary of the zoo: name, money, rating, animal and enclosure counts
+    // EFFECTS: prints a one-glance summary of the zoo (day, level, money, food, rating, hospital, counts)
+    //          followed by warnings about anything that needs attention
     static void printDashboard(Zoo zoo) {
         String rule = Ansi.paint(repeat('=', WIDTH), Ansi.GREEN);
+        Hospital hospital = zoo.getHospital();
         System.out.println();
         System.out.println("  " + rule);
-        System.out.println("   " + Ansi.paint(zoo.getName().toUpperCase(), Ansi.BOLD, Ansi.GREEN));
-        System.out.println("   " + Ansi.paint("$" + String.format("%,d", zoo.getMoney()), Ansi.YELLOW, Ansi.BOLD)
+        System.out.println("   " + Ansi.paint(zoo.getName().toUpperCase(), Ansi.BOLD, Ansi.GREEN)
+                + Ansi.paint("   Day " + zoo.getDay() + "  -  Zoo level " + zoo.getLevel() + "/" + Zoo.MAX_LEVEL,
+                Ansi.DIM));
+        System.out.println("   " + money(zoo.getMoney())
+                + divider() + "Food " + Ansi.paint(String.valueOf(zoo.getFood()), Ansi.BOLD)
                 + divider() + "Rating " + stars(zoo.getRating())
-                + divider() + plural(zoo.getNumAnimals(), "animal")
-                + divider() + plural(zoo.getNumEnclosures(), "enclosure"));
+                + divider() + "Hospital " + hospital.getPatients().size() + "/" + hospital.getCapacity());
+        System.out.println("   " + plural(zoo.getNumAnimals(), "animal")
+                + divider() + plural(zoo.getNumEnclosures(), "enclosure")
+                + divider() + "Tonight: +" + money(zoo.getTicketIncome()) + " tickets, -"
+                + money(zoo.getUpkeep()) + " upkeep");
         System.out.println("  " + rule);
+        for (String warning : warnings(zoo)) {
+            System.out.println("   " + Ansi.paint("! " + warning, Ansi.YELLOW));
+        }
+    }
+
+    // EFFECTS: returns short warnings about hungry, unhappy, sick or unsettled animals, dirty enclosures
+    //          and a food store too small to feed everyone
+    static List<String> warnings(Zoo zoo) {
+        List<String> warnings = new ArrayList<>();
+        addWarning(warnings, zoo.getAnimals(), Animal::isHungry, "hungry");
+        addWarning(warnings, zoo.getAnimals(), Animal::isUnhappy, "unhappy");
+        addWarning(warnings, zoo.getAnimals(), Animal::isSick, "sick (try the hospital)");
+        addWarning(warnings, zoo.getAnimals(), a -> !a.isSettled(), "not in a proper enclosure (earning nothing)");
+        List<String> dirty = new ArrayList<>();
+        for (Enclosure e : zoo.getEnclosures()) {
+            if (e.isDirty()) {
+                dirty.add(e.getName());
+            }
+        }
+        if (!dirty.isEmpty()) {
+            warnings.add("Dirty: " + String.join(", ", dirty));
+        }
+        int mealsNeeded = 0;
+        for (Animal a : zoo.getAnimals()) {
+            mealsNeeded += a.isInHospital() ? 0 : zoo.getMealSize(a);
+        }
+        if (zoo.getFood() < mealsNeeded) {
+            warnings.add("Not enough food for everyone (need " + mealsNeeded + ")");
+        }
+        return warnings;
+    }
+
+    // MODIFIES: warnings
+    // EFFECTS: adds "<names> is/are <problem>" for the animals (not in hospital) that have the problem
+    private static void addWarning(List<String> warnings, List<Animal> animals, Predicate<Animal> problem,
+                                   String description) {
+        List<String> names = new ArrayList<>();
+        for (Animal a : animals) {
+            if (!a.isInHospital() && problem.test(a)) {
+                names.add(a.getName());
+            }
+        }
+        if (!names.isEmpty()) {
+            warnings.add(String.join(", ", names) + (names.size() == 1 ? " is " : " are ") + description);
+        }
+    }
+
+    // EFFECTS: returns a shop line with the species' price, appetite and appeal, dimmed if it's locked
+    static String shopLabel(Species species, int zooLevel) {
+        String details = padRight(species.getDisplayName(), 15) + padRight("$" + species.getPrice(), 7)
+                + "eats " + species.getFoodPerMeal() + "  draws $" + species.getAppeal() + "/day";
+        if (!species.isUnlockedAt(zooLevel)) {
+            return Ansi.paint(details + "   [zoo level " + species.getRequiredLevel() + "]", Ansi.DIM);
+        }
+        return details;
+    }
+
+    // EFFECTS: prints what happened overnight
+    static void printDayReport(DayReport report, Zoo zoo) {
+        System.out.println("  " + Ansi.paint("The sun sets on day " + report.getDay() + "...", Ansi.MAGENTA, Ansi.BOLD));
+        System.out.println("    Ticket sales   " + Ansi.paint("+$" + report.getTicketIncome(), Ansi.GREEN));
+        System.out.println("    Upkeep         " + Ansi.paint("-$" + report.getUpkeep(), Ansi.RED));
+        for (String event : report.getEvents()) {
+            System.out.println("    " + Ansi.paint("* " + event, Ansi.CYAN));
+        }
+        System.out.println("  " + Ansi.paint("Good morning! Day " + zoo.getDay() + " begins with ", Ansi.BOLD)
+                + money(zoo.getMoney()) + Ansi.paint(" in the bank.", Ansi.BOLD));
+    }
+
+    // EFFECTS: prints the game over screen
+    static void printGameOver(Zoo zoo) {
+        System.out.println();
+        System.out.println("  " + Ansi.paint(repeat('#', WIDTH), Ansi.RED));
+        System.out.println("  " + Ansi.paint("  BANKRUPT!  " + zoo.getName() + " ran out of money on day "
+                + (zoo.getDay() - 1) + ".", Ansi.RED, Ansi.BOLD));
+        System.out.println("  " + Ansi.paint("  The animals have been moved to other zoos. Game over.", Ansi.RED));
+        System.out.println("  " + Ansi.paint(repeat('#', WIDTH), Ansi.RED));
+    }
+
+    // EFFECTS: returns amount formatted like "$1,250", in yellow (red if negative)
+    static String money(int amount) {
+        String text = (amount < 0 ? "-$" : "$") + String.format("%,d", Math.abs(amount));
+        return Ansi.paint(text, amount < 0 ? Ansi.RED : Ansi.YELLOW, Ansi.BOLD);
     }
 
     // EFFECTS: prints a card for each animal, or a hint if there are none
@@ -92,7 +188,18 @@ final class ZooView {
         printStat("health", animal.getHealth());
         printStat("happiness", animal.getHappiness());
         printStat("fullness", animal.getHunger());
+        System.out.println("      " + Ansi.paint(todayLine(animal), Ansi.DIM));
         System.out.println();
+    }
+
+    // EFFECTS: returns a line saying what the animal has done today, or that it's in the hospital
+    private static String todayLine(Animal animal) {
+        if (animal.isInHospital()) {
+            return "In the hospital: back in " + plural(animal.getHospitalNights(), "night");
+        }
+        return "Today: " + (animal.hasPlayedToday() ? "played" : "not played yet")
+                + ", " + (animal.hasRestedToday() ? "rested" : "not rested yet")
+                + "  -  eats " + animal.getSpeciesInfo().getFoodPerMeal() + " food per meal";
     }
 
     // EFFECTS: prints each enclosure with its occupancy, cleanliness and residents
@@ -105,7 +212,8 @@ final class ZooView {
             String occupancy = e.getNumAnimals() + "/" + e.getCapacity() + " animals";
             System.out.println("  " + Ansi.paint(padRight(e.getName(), 20), Ansi.BOLD, Ansi.CYAN)
                     + padRight(occupancy, 13)
-                    + "clean " + bar(e.getCleanliness(), Enclosure.MAX_CLEANLINESS));
+                    + "clean " + bar(e.getCleanliness(), Enclosure.MAX_CLEANLINESS)
+                    + (e.isDirty() ? Ansi.paint("  DIRTY", Ansi.RED, Ansi.BOLD) : ""));
             System.out.println("      " + Ansi.paint(residents(e), Ansi.DIM));
         }
     }

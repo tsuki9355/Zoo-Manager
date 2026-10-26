@@ -1,6 +1,10 @@
 {
     "Money": 1000,
     "Animals": [],
+    "HospitalLevel": 1,
+    "Level": 1,
     "Enclosures": [],
-    "Name": "Angus"
+    "Day": 1,
+    "Name": "Angus",
+    "Food": 20
 }

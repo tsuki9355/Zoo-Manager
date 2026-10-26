@@ -1,9 +1,13 @@
 package ui;
 
+import model.ActionResult;
 import model.Animal;
+import model.DayReport;
 import model.Enclosure;
 import model.Event;
 import model.EventLog;
+import model.Hospital;
+import model.Species;
 import model.Zoo;
 import persistence.JsonReader;
 import persistence.JsonWriter;
@@ -16,7 +20,9 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.function.Consumer;
+import java.util.List;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class ZooManageAppGUI extends JFrame {
 
@@ -78,7 +84,7 @@ public class ZooManageAppGUI extends JFrame {
         this.setTitle(name);
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         this.setResizable(true);
-        this.setSize(1100, 650);
+        this.setSize(1100, 720);
         this.setLocationRelativeTo(null);
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -101,7 +107,7 @@ public class ZooManageAppGUI extends JFrame {
         zooNamePanel.setPreferredSize(new Dimension(180, 60));
         topPanel.add(zooNamePanel, BorderLayout.WEST);
 
-        JPanel functionsPanel = new JPanel(new GridLayout(0, 4, 5, 5));
+        JPanel functionsPanel = new JPanel(new GridLayout(0, 5, 5, 5));
         functionsPanel.setBorder(BorderFactory.createTitledBorder("List of functions to choose from"));
         functionsPanel.setOpaque(false);
         addFunctionButtons(functionsPanel);
@@ -150,28 +156,28 @@ public class ZooManageAppGUI extends JFrame {
     // MODIFIES: this
     // EFFECTS: add all the function buttons to the given panel
     private void addFunctionButtons(JPanel panel) {
-        panel.add(makeButton("Add enclosure", e -> handleAddEnclosure()));
-        panel.add(makeButton("Remove enclosure", e -> handleRemoveEnclosure()));
-        panel.add(makeButton("Add animal", e -> handleAddAnimal()));
+        panel.add(makeButton("End the day", e -> handleEndDay()));
+        panel.add(makeButton("Adopt animal", e -> handleAdoptAnimal()));
         panel.add(makeButton("Assign to enclosure", e -> handleAssignAnimalToEnclosure()));
-        panel.add(makeButton("Remove from enclosure", e -> handleRemoveAnimalFromEnclosure()));
-        panel.add(makeButton("Clean enclosures", e -> {
-            zoo.cleanAllEnclosures();
-            refreshAll();
-            show("All enclosures have been cleaned!");
-        }));
-        panel.add(makeButton("Feed", e -> handleCareForSelected(Animal::feed, "feed")));
-        panel.add(makeButton("Feed all", e -> handleCareForAll(zoo::feedAllAnimals, "All animals are fed!")));
-        panel.add(makeButton("Play", e -> handleCareForSelected(Animal::play, "play with")));
-        panel.add(makeButton("Play all", e -> handleCareForAll(zoo::playWithAllAnimals, "You played with everyone!")));
-        panel.add(makeButton("Sleep", e -> handleCareForSelected(Animal::sleep, "put to sleep")));
-        panel.add(makeButton("Sleep all", e -> handleCareForAll(zoo::sleepAllAnimals, "All animals have slept!")));
-        panel.add(makeButton("Treat", e -> handleCareForSelected(Animal::treat, "treat")));
-        panel.add(makeButton("Increase income", e -> {
-            zoo.increaseIncome();
-            updateStatus();
-            show("Income increased! We now have $" + zoo.getMoney());
-        }));
+        panel.add(makeButton("Evict from enclosure", e -> handleRemoveAnimalFromEnclosure()));
+        panel.add(makeButton("Sell animal", e -> handleSellAnimal()));
+        panel.add(makeButton("Feed", e -> handleCareForSelected(zoo::feedAnimal, "feed")));
+        panel.add(makeButton("Feed all", e -> handleResult(zoo.feedAllAnimals(), "All animals are fed!")));
+        panel.add(makeButton("Play", e -> handleCareForSelected(zoo::playAnimal, "play with")));
+        panel.add(makeButton("Play all", e -> handleCount(zoo::playWithAllAnimals, "played")));
+        panel.add(makeButton("Rest", e -> handleCareForSelected(zoo::restAnimal, "rest")));
+        panel.add(makeButton("Rest all", e -> handleCount(zoo::restAllAnimals, "rested")));
+        panel.add(makeButton("Send to hospital", e -> handleCareForSelected(zoo::sendToHospital, "send to hospital")));
+        panel.add(makeButton("Build enclosure", e -> handleBuildEnclosure()));
+        panel.add(makeButton("Expand enclosure", e -> handleExpandEnclosure()));
+        panel.add(makeButton("Remove enclosure", e -> handleRemoveEnclosure()));
+        panel.add(makeButton("Clean enclosures", e -> handleResult(zoo.cleanAllEnclosures(),
+                "All enclosures have been cleaned!")));
+        panel.add(makeButton("Buy food", e -> handleBuyFood()));
+        panel.add(makeButton("Upgrade hospital", e -> handleUpgrade(zoo.getHospital().getUpgradeCost(),
+                "Add a hospital bed", zoo::upgradeHospital)));
+        panel.add(makeButton("Upgrade zoo", e -> handleUpgrade(zoo.getZooUpgradeCost(),
+                "Upgrade the zoo to unlock new species", zoo::upgradeZoo)));
         panel.add(makeButton("Save", e -> handleSaveZoo()));
         panel.add(makeButton("Load", e -> handleLoadZoo()));
     }
@@ -184,63 +190,80 @@ public class ZooManageAppGUI extends JFrame {
         return b;
     }
 
-    // MODIFIES: this, zoo
-    // EFFECTS: add enclosure to the zoo and show it
-    private void handleAddEnclosure() {
-        String name = ask("Enter new enclosure name:");
-        if (name == null) {
-            return;
-        }
-        if (!zoo.addEnclosure(name)) {
-            show("An enclosure called '" + name + "' already exists.");
-            return;
-        }
+    // MODIFIES: this
+    // EFFECTS: shows successMessage if result is a success, otherwise why it failed; then refreshes
+    private void handleResult(ActionResult result, String successMessage) {
         refreshAll();
-        show("Enclosure '" + name + "' added!");
+        show(result.isSuccess() ? successMessage : result.getMessage());
     }
 
     // MODIFIES: this, zoo
-    // EFFECTS: remove the selected enclosure
-    private void handleRemoveEnclosure() {
-        Enclosure selected = enclosureList.getSelectedValue();
-        if (selected == null) {
-            show("Select an enclosure to remove.");
-        } else if (!selected.isEmpty()) {
-            show("Cannot remove. Enclosure is not empty.");
-        } else {
-            zoo.removeEnclosure(selected.getName());
+    // EFFECTS: ends the day, shows the overnight report, and handles bankruptcy
+    private void handleEndDay() {
+        DayReport report = zoo.endDay();
+        StringBuilder text = new StringBuilder("Day " + report.getDay() + " is over.\n\n");
+        text.append("Ticket sales: +$").append(report.getTicketIncome()).append('\n');
+        text.append("Upkeep: -$").append(report.getUpkeep()).append('\n');
+        for (String event : report.getEvents()) {
+            text.append("\n* ").append(event);
+        }
+        text.append("\n\nDay ").append(zoo.getDay()).append(" begins with $").append(zoo.getMoney()).append('.');
+        refreshAll();
+        show(text.toString());
+        if (zoo.isBankrupt()) {
+            handleBankruptcy();
+        }
+    }
+
+    // MODIFIES: this, zoo
+    // EFFECTS: tells the user the zoo is bankrupt and lets them load their save or start a new zoo
+    private void handleBankruptcy() {
+        Object[] options = {"Load last save", "Start a new zoo"};
+        int choice = JOptionPane.showOptionDialog(this, zoo.getName() + " has gone bankrupt. Game over!",
+                "Bankrupt", JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE, null, options, options[0]);
+        if (choice == 0) {
+            handleLoadZoo();
+        }
+        if (zoo.isBankrupt()) {
+            zoo = new Zoo(zoo.getName());
+            zoo.getOrCreateWaitingRoom();
             refreshAll();
-            show("Enclosure '" + selected.getName() + "' was removed!");
+            show("A fresh start! You have $" + zoo.getMoney() + ".");
         }
     }
 
     // MODIFIES: this, zoo
-    // EFFECTS: add an animal and assign it to Waiting Room
-    private void handleAddAnimal() {
-        if (zoo.getOrCreateWaitingRoom().isFull()) {
-            show("Waiting Room capacity is max, please assign some animals to other enclosures.");
-            return;
+    // EFFECTS: lets the user pick an unlocked species and a name, then adopts it into the Waiting Room
+    private void handleAdoptAnimal() {
+        JComboBox<Species> speciesBox = new JComboBox<>();
+        for (Species s : Species.catalog()) {
+            if (s.isUnlockedAt(zoo.getLevel())) {
+                speciesBox.addItem(s);
+            }
         }
-        String species = ask("Enter animal's species:");
-        String name = species == null ? null : ask("Enter animal's name:");
-        String ageText = name == null ? null : ask("Enter animal's age:");
-        if (ageText == null) {
-            return;
+        speciesBox.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean selected, boolean focused) {
+                Species s = (Species) value;
+                String text = s == null ? "" : s.getDisplayName() + "  -  $" + s.getPrice() + ", eats "
+                        + s.getFoodPerMeal() + ", draws $" + s.getAppeal() + "/day";
+                return super.getListCellRendererComponent(list, text, index, selected, focused);
+            }
+        });
+        JTextField nameField = new JTextField(12);
+        JPanel panel = new JPanel(new GridLayout(2, 2, 5, 5));
+        panel.add(new JLabel("Species (more unlock with zoo upgrades):"));
+        panel.add(speciesBox);
+        panel.add(new JLabel("Name:"));
+        panel.add(nameField);
+        int result = JOptionPane.showConfirmDialog(this, panel, "Adopt an animal ($" + zoo.getMoney() + " available)",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        String name = nameField.getText().trim();
+        if (result == JOptionPane.OK_OPTION && !name.isEmpty()) {
+            handleResult(zoo.adoptAnimal((Species) speciesBox.getSelectedItem(), name),
+                    name + " has arrived in the Waiting Room! Assign them to an enclosure so visitors can see them.");
         }
-        int age;
-        try {
-            age = Integer.parseInt(ageText);
-        } catch (NumberFormatException ex) {
-            show("Age must be an integer.");
-            return;
-        }
-        if (!zoo.addAnimal(species, name, age)) {
-            show("An animal called '" + name + "' already exists.");
-            return;
-        }
-        zoo.assignAnimalToEnclosure(name, Zoo.WAITING_ROOM);
-        refreshAll();
-        show("Animal added to Waiting Room!");
     }
 
     // MODIFIES: this, zoo
@@ -270,8 +293,8 @@ public class ZooManageAppGUI extends JFrame {
         if (result == JOptionPane.OK_OPTION) {
             String animalName = (String) animalBox.getSelectedItem();
             String enclosureName = (String) enclosureBox.getSelectedItem();
-            show(describe(zoo.assignAnimalToEnclosure(animalName, enclosureName), animalName, enclosureName));
-            refreshAll();
+            handleResult(zoo.assignAnimalToEnclosure(animalName, enclosureName),
+                    "Assigned '" + animalName + "' to enclosure '" + enclosureName + "'.");
         }
     }
 
@@ -290,46 +313,109 @@ public class ZooManageAppGUI extends JFrame {
                 + "'. Use 'Assign to enclosure' to give it a new home.");
     }
 
-    // EFFECTS: returns a message describing the outcome of an assignment
-    private String describe(Zoo.AssignResult result, String animalName, String enclosureName) {
-        switch (result) {
-            case ASSIGNED:
-                return "Assigned '" + animalName + "' to enclosure '" + enclosureName + "'.";
-            case NO_SUCH_ANIMAL:
-                return "No such animal.";
-            case NO_SUCH_ENCLOSURE:
-                return "No such enclosure.";
-            case ALREADY_THERE:
-                return "This animal is already in that enclosure!";
-            default:
-                return "Enclosure is full already!";
+    // MODIFIES: this, zoo
+    // EFFECTS: after confirming, sells the selected animal for part of its price
+    private void handleSellAnimal() {
+        Animal selected = animalList.getSelectedValue();
+        if (selected == null) {
+            show("Select an animal to sell.");
+            return;
+        }
+        int price = zoo.getSalePrice(selected);
+        int answer = JOptionPane.showConfirmDialog(this, "Sell " + selected.getName() + " for $" + price + "?",
+                "Sell animal", JOptionPane.YES_NO_OPTION);
+        if (answer == JOptionPane.YES_OPTION) {
+            handleResult(zoo.sellAnimal(selected.getName()), "Goodbye, " + selected.getName() + "! +$" + price);
         }
     }
 
     // MODIFIES: this, the selected animal
-    // EFFECTS: applies care to the selected animal and reports its new condition
-    private void handleCareForSelected(Consumer<Animal> care, String action) {
+    // EFFECTS: applies care to the selected animal and reports its new condition (or why it failed)
+    private void handleCareForSelected(Function<String, ActionResult> care, String action) {
         Animal selected = animalList.getSelectedValue();
         if (selected == null) {
             show("Select an animal to " + action + ".");
             return;
         }
-        care.accept(selected);
-        refreshAll();
-        show(selected.getName() + " is now at  health " + selected.getHealth()
-                + ",  happiness " + selected.getHappiness() + ",  hunger " + selected.getHunger());
+        handleResult(care.apply(selected.getName()), selected.getName() + " is now at  health "
+                + selected.getHealth() + ",  happiness " + selected.getHappiness()
+                + ",  hunger " + selected.getHunger() + (selected.isInHospital() ? "  (in hospital)" : ""));
     }
 
     // MODIFIES: this, every animal
-    // EFFECTS: applies care to every animal in the zoo and shows message
-    private void handleCareForAll(Runnable care, String message) {
-        if (zoo.getNumAnimals() == 0) {
-            show("There are no animals yet.");
+    // EFFECTS: applies care to every animal that can have it today and says how many it helped
+    private void handleCount(Supplier<Integer> care, String verb) {
+        int count = care.get();
+        refreshAll();
+        show(count == 0 ? "Nobody needed that right now (once per animal per day)." : count + " animal(s) " + verb + ".");
+    }
+
+    // MODIFIES: this, zoo
+    // EFFECTS: builds an enclosure with a name the user types
+    private void handleBuildEnclosure() {
+        String name = ask("A new enclosure costs $" + Zoo.ENCLOSURE_PRICE + " (+$" + Zoo.ENCLOSURE_UPKEEP
+                + "/day upkeep).\nEnter new enclosure name:");
+        if (name != null) {
+            handleResult(zoo.buildEnclosure(name), "Enclosure '" + name + "' built!");
+        }
+    }
+
+    // MODIFIES: this, zoo
+    // EFFECTS: pays to expand the selected enclosure
+    private void handleExpandEnclosure() {
+        Enclosure selected = enclosureList.getSelectedValue();
+        if (selected == null) {
+            show("Select an enclosure to expand.");
             return;
         }
-        care.run();
-        refreshAll();
-        show(message);
+        int answer = JOptionPane.showConfirmDialog(this, "Add 2 spaces to '" + selected.getName() + "' for $"
+                + selected.getExpansionCost() + "?", "Expand enclosure", JOptionPane.YES_NO_OPTION);
+        if (answer == JOptionPane.YES_OPTION) {
+            handleResult(zoo.expandEnclosure(selected.getName()),
+                    "'" + selected.getName() + "' now holds " + selected.getCapacity() + " animals.");
+        }
+    }
+
+    // MODIFIES: this, zoo
+    // EFFECTS: remove the selected enclosure
+    private void handleRemoveEnclosure() {
+        Enclosure selected = enclosureList.getSelectedValue();
+        if (selected == null) {
+            show("Select an enclosure to remove.");
+        } else if (!selected.isEmpty()) {
+            show("Cannot remove. Enclosure is not empty.");
+        } else if (!zoo.removeEnclosure(selected.getName())) {
+            show("The Waiting Room can't be removed.");
+        } else {
+            refreshAll();
+            show("Enclosure '" + selected.getName() + "' was removed!");
+        }
+    }
+
+    // MODIFIES: this, zoo
+    // EFFECTS: asks how many packs of food to buy, then buys them
+    private void handleBuyFood() {
+        String answer = ask("Food store: " + zoo.getFood() + ". A pack of " + Zoo.FOOD_PACK_SIZE + " food costs $"
+                + Zoo.FOOD_PACK_PRICE + ".\nHow many packs?");
+        if (answer == null) {
+            return;
+        }
+        try {
+            int packs = Integer.parseInt(answer);
+            handleResult(zoo.buyFood(packs), "Bought " + packs * Zoo.FOOD_PACK_SIZE + " food.");
+        } catch (NumberFormatException e) {
+            show("Please enter a whole number.");
+        }
+    }
+
+    // MODIFIES: this, zoo
+    // EFFECTS: confirms and performs an upgrade
+    private void handleUpgrade(int cost, String description, Supplier<ActionResult> upgrade) {
+        int answer = JOptionPane.showConfirmDialog(this, description + " for $" + cost + "?", "Upgrade",
+                JOptionPane.YES_NO_OPTION);
+        if (answer == JOptionPane.YES_OPTION) {
+            handleResult(upgrade.get(), "Upgrade complete!");
+        }
     }
 
     // EFFECTS: save the current zoo as JSON files
@@ -388,14 +474,25 @@ public class ZooManageAppGUI extends JFrame {
     }
 
     // MODIFIES: this
-    // EFFECTS: update the zoo's status
+    // EFFECTS: update the zoo's status line and its warnings
     private void updateStatus() {
+        Hospital hospital = zoo.getHospital();
         long homeless = zoo.getAnimals().stream().filter(a -> !a.hasEnclosure()).count();
-        statusLabel.setText("Money: $" + zoo.getMoney()
-                + " | Enclosures: " + zoo.getNumEnclosures()
+        String status = "Day " + zoo.getDay() + " | Level " + zoo.getLevel() + "/" + Zoo.MAX_LEVEL
+                + " | Money: $" + zoo.getMoney() + " | Food: " + zoo.getFood()
                 + " | Animals: " + zoo.getNumAnimals()
                 + (homeless > 0 ? " (" + homeless + " without an enclosure)" : "")
-                + " | Rating: " + zoo.getRating() + "/" + Zoo.MAX_RATING);
+                + " | Hospital: " + hospital.getPatients().size() + "/" + hospital.getCapacity()
+                + " | Rating: " + zoo.getRating() + "/" + Zoo.MAX_RATING
+                + " | Tonight: +$" + zoo.getTicketIncome() + " / -$" + zoo.getUpkeep();
+        List<String> warnings = ZooView.warnings(zoo);
+        String warningText = warnings.isEmpty() ? "All good!" : String.join("  •  ", warnings);
+        statusLabel.setText("<html>" + status + "<br><font color='#b04000'>" + escape(warningText) + "</font></html>");
+    }
+
+    // EFFECTS: returns text with HTML special characters escaped
+    private static String escape(String text) {
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     // EFFECTS: shows prompt in a dialog and returns the trimmed answer, or null if cancelled or blank

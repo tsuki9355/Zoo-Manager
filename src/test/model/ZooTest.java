@@ -6,56 +6,70 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Random;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import model.Zoo.AssignResult;
 
 public class ZooTest {
 
     private Zoo zoo;
 
+    // A random number generator that always triggers an event and always picks the given event kind
+    private static final class FixedRandom extends Random {
+        private final int pick;
+
+        FixedRandom(int pick) {
+            this.pick = pick;
+        }
+
+        @Override
+        public double nextDouble() {
+            return 0;
+        }
+
+        @Override
+        public int nextInt(int bound) {
+            return Math.min(pick, bound - 1);
+        }
+    }
+
     @BeforeEach
     void runBefore() {
         zoo = new Zoo("Jurrassic Park");
+        zoo.setEventChance(0);
+    }
+
+    // EFFECTS: adds a penguin called name to the zoo for free and settles it in a free enclosure "Ice"
+    private Animal settledPenguin(String name) {
+        zoo.addEnclosure("Ice");
+        zoo.addAnimal("Penguin", name, 2);
+        zoo.assignAnimalToEnclosure(name, "Ice");
+        return zoo.findAnimal(name);
     }
 
     @Test
     void testConstructor() {
         assertEquals("Jurrassic Park", zoo.getName());
         assertEquals(1000, zoo.getMoney());
+        assertEquals(20, zoo.getFood());
+        assertEquals(1, zoo.getDay());
+        assertEquals(1, zoo.getLevel());
+        assertEquals(1, zoo.getHospital().getCapacity());
         assertEquals(0, zoo.getNumEnclosures());
         assertEquals(0, zoo.getNumAnimals());
+        assertFalse(zoo.isBankrupt());
     }
 
-    @Test
-    void testIncreaseIncome() {
-        zoo.increaseIncome();
-        zoo.increaseIncome();
-        assertEquals(1040, zoo.getMoney());
-    }
+    // ----- bookkeeping -----
 
     @Test
     void testAddEnclosureMultiple() {
-        zoo.addEnclosure("Orca's Enclosure");
-        zoo.addEnclosure("Penguin's Enclosure");
-        assertEquals("Orca's Enclosure", zoo.getEnclosures().get(0).getName());
+        assertTrue(zoo.addEnclosure("Orca's Enclosure"));
+        assertTrue(zoo.addEnclosure("Penguin's Enclosure"));
         assertEquals("Penguin's Enclosure", zoo.getEnclosures().get(1).getName());
+        assertFalse(zoo.addEnclosure("Orca's Enclosure"));
         assertEquals(2, zoo.getNumEnclosures());
-    }
-
-    @Test
-    void testAddEnclosureDuplicateName() {
-        zoo.addEnclosure("Water");
-        assertFalse(zoo.addEnclosure("Water"));
-        assertEquals(1, zoo.getNumEnclosures());
-    }
-
-    @Test
-    void testRemoveEnclosure() {
-        zoo.addEnclosure("Orca's Enclosure");
-        assertTrue(zoo.removeEnclosure("Orca's Enclosure"));
-        assertEquals(0, zoo.getNumEnclosures());
     }
 
     @Test
@@ -67,17 +81,13 @@ public class ZooTest {
     }
 
     @Test
-    void testRemoveEnclosureWithAnimal() {
-        zoo.addEnclosure("Shark's Enclosure");
-        zoo.addAnimal("Shark", "tuki", 5);
-        zoo.assignAnimalToEnclosure("tuki", "Shark's Enclosure");
-        assertFalse(zoo.removeEnclosure("Shark's Enclosure"));
-        assertEquals(1, zoo.getNumEnclosures());
-    }
-
-    @Test
-    void testRemoveEnclosureMissing() {
-        assertFalse(zoo.removeEnclosure("Water"));
+    void testRemoveEnclosureRefusals() {
+        settledPenguin("pingu");
+        assertFalse(zoo.removeEnclosure("Ice"));
+        assertFalse(zoo.removeEnclosure("Nowhere"));
+        zoo.getOrCreateWaitingRoom();
+        assertFalse(zoo.removeEnclosure(Zoo.WAITING_ROOM));
+        assertEquals(2, zoo.getNumEnclosures());
     }
 
     @Test
@@ -90,16 +100,10 @@ public class ZooTest {
 
     @Test
     void testAddAnimalMultiple() {
-        zoo.addAnimal("Sloth", "Slothy", 3);
-        zoo.addAnimal("Crocodile", "Crocy", 3);
-        assertEquals(2, zoo.getNumAnimals());
-    }
-
-    @Test
-    void testAddAnimalDuplicateName() {
-        zoo.addAnimal("Sloth", "Slothy", 3);
+        assertTrue(zoo.addAnimal("Sloth", "Slothy", 3));
+        assertTrue(zoo.addAnimal("Crocodile", "Crocy", 3));
         assertFalse(zoo.addAnimal(new Animal("Crocodile", "Slothy", 3)));
-        assertEquals(1, zoo.getNumAnimals());
+        assertEquals(2, zoo.getNumAnimals());
     }
 
     @Test
@@ -112,13 +116,102 @@ public class ZooTest {
         assertNull(zoo.findEnclosure("Fire"));
     }
 
+    // ----- building -----
+
     @Test
-    void testCleanAllEnclosures() {
-        zoo.addEnclosure("Orca's Enclosure");
-        zoo.addEnclosure("Penguin's Enclosure");
-        zoo.cleanAllEnclosures();
-        assertEquals(12, zoo.getEnclosures().get(0).getCleanliness());
-        assertEquals(12, zoo.getEnclosures().get(1).getCleanliness());
+    void testBuildEnclosure() {
+        assertEquals(ActionResult.SUCCESS, zoo.buildEnclosure("Savanna"));
+        assertEquals(1000 - Zoo.ENCLOSURE_PRICE, zoo.getMoney());
+        assertEquals(ActionResult.NAME_TAKEN, zoo.buildEnclosure("Savanna"));
+        zoo.setMoney(100);
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.buildEnclosure("Jungle"));
+        assertEquals(1, zoo.getNumEnclosures());
+    }
+
+    @Test
+    void testExpandEnclosure() {
+        zoo.addEnclosure("Savanna");
+        assertEquals(ActionResult.SUCCESS, zoo.expandEnclosure("Savanna"));
+        assertEquals(750, zoo.getMoney());
+        assertEquals(7, zoo.findEnclosure("Savanna").getCapacity());
+        assertEquals(ActionResult.NO_SUCH_ENCLOSURE, zoo.expandEnclosure("Jungle"));
+        zoo.setMoney(0);
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.expandEnclosure("Savanna"));
+        zoo.findEnclosure("Savanna").setCapacity(Enclosure.MAX_CAPACITY);
+        assertEquals(ActionResult.MAX_LEVEL, zoo.expandEnclosure("Savanna"));
+    }
+
+    @Test
+    void testUpgradeHospital() {
+        assertEquals(ActionResult.SUCCESS, zoo.upgradeHospital());
+        assertEquals(600, zoo.getMoney());
+        assertEquals(2, zoo.getHospital().getCapacity());
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.upgradeHospital());
+        zoo.getHospital().setLevel(Hospital.MAX_LEVEL);
+        assertEquals(ActionResult.MAX_LEVEL, zoo.upgradeHospital());
+    }
+
+    @Test
+    void testUpgradeZooUnlocksSpecies() {
+        zoo.setMoney(20000);
+        assertEquals(ActionResult.LOCKED, zoo.adoptAnimal(Species.ZEBRA, "Stripes"));
+        assertEquals(1500, zoo.getZooUpgradeCost());
+        assertEquals(ActionResult.SUCCESS, zoo.upgradeZoo());
+        assertEquals(2, zoo.getLevel());
+        assertEquals(ActionResult.SUCCESS, zoo.adoptAnimal(Species.ZEBRA, "Stripes"));
+        zoo.upgradeZoo();
+        zoo.upgradeZoo();
+        assertEquals(0, zoo.getZooUpgradeCost());
+        assertEquals(ActionResult.MAX_LEVEL, zoo.upgradeZoo());
+    }
+
+    @Test
+    void testUpgradeZooNotEnoughMoney() {
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.upgradeZoo());
+        assertEquals(1, zoo.getLevel());
+    }
+
+    // ----- animals -----
+
+    @Test
+    void testAdoptAnimal() {
+        assertEquals(ActionResult.SUCCESS, zoo.adoptAnimal(Species.PENGUIN, "pingu"));
+        Animal pingu = zoo.findAnimal("pingu");
+        assertEquals(1000 - Species.PENGUIN.getPrice(), zoo.getMoney());
+        assertEquals("Penguin", pingu.getSpecies());
+        assertEquals(1, pingu.getAge());
+        assertEquals(Zoo.WAITING_ROOM, pingu.getEnclosureName());
+        assertEquals(ActionResult.NAME_TAKEN, zoo.adoptAnimal(Species.MEERKAT, "pingu"));
+    }
+
+    @Test
+    void testAdoptAnimalRefusals() {
+        zoo.setMoney(50);
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.adoptAnimal(Species.MEERKAT, "Timon"));
+        assertEquals(ActionResult.LOCKED, zoo.adoptAnimal(Species.ELEPHANT, "Dumbo"));
+        zoo.setMoney(10000);
+        for (int i = 0; i < Enclosure.DEFAULT_CAPACITY; i++) {
+            zoo.adoptAnimal(Species.MEERKAT, "Timon" + i);
+        }
+        assertEquals(ActionResult.WAITING_ROOM_FULL, zoo.adoptAnimal(Species.MEERKAT, "Extra"));
+    }
+
+    @Test
+    void testSellAnimal() {
+        zoo.adoptAnimal(Species.PENGUIN, "pingu");
+        assertEquals(75, zoo.getSalePrice(zoo.findAnimal("pingu")));
+        assertEquals(ActionResult.SUCCESS, zoo.sellAnimal("pingu"));
+        assertEquals(1000 - 150 + 75, zoo.getMoney());
+        assertNull(zoo.findAnimal("pingu"));
+        assertTrue(zoo.findEnclosure(Zoo.WAITING_ROOM).isEmpty());
+        assertEquals(ActionResult.NO_SUCH_ANIMAL, zoo.sellAnimal("pingu"));
+    }
+
+    @Test
+    void testSellAnimalInHospital() {
+        zoo.addAnimal("Penguin", "pingu", 2);
+        zoo.sendToHospital("pingu");
+        assertEquals(ActionResult.IN_HOSPITAL, zoo.sellAnimal("pingu"));
     }
 
     @Test
@@ -126,8 +219,8 @@ public class ZooTest {
         zoo.addEnclosure("Water");
         zoo.addEnclosure("Fire");
         zoo.addAnimal("Orca", "tuki", 3);
-        zoo.assignAnimalToEnclosure("tuki", "Water");
-        assertEquals(AssignResult.ASSIGNED, zoo.assignAnimalToEnclosure("tuki", "Fire"));
+        assertEquals(ActionResult.SUCCESS, zoo.assignAnimalToEnclosure("tuki", "Water"));
+        assertEquals(ActionResult.SUCCESS, zoo.assignAnimalToEnclosure("tuki", "Fire"));
         assertEquals(0, zoo.findEnclosure("Water").getNumAnimals());
         assertEquals(1, zoo.findEnclosure("Fire").getNumAnimals());
         assertEquals("Fire", zoo.findAnimal("tuki").getEnclosureName());
@@ -137,110 +230,260 @@ public class ZooTest {
     void testAssignAnimalToEnclosureFailures() {
         zoo.addEnclosure("Water");
         zoo.addAnimal("Orca", "tuki", 3);
-        assertEquals(AssignResult.NO_SUCH_ANIMAL, zoo.assignAnimalToEnclosure("nobody", "Water"));
-        assertEquals(AssignResult.NO_SUCH_ENCLOSURE, zoo.assignAnimalToEnclosure("tuki", "Nowhere"));
+        assertEquals(ActionResult.NO_SUCH_ANIMAL, zoo.assignAnimalToEnclosure("nobody", "Water"));
+        assertEquals(ActionResult.NO_SUCH_ENCLOSURE, zoo.assignAnimalToEnclosure("tuki", "Nowhere"));
         zoo.assignAnimalToEnclosure("tuki", "Water");
-        assertEquals(AssignResult.ALREADY_THERE, zoo.assignAnimalToEnclosure("tuki", "Water"));
+        assertEquals(ActionResult.ALREADY_THERE, zoo.assignAnimalToEnclosure("tuki", "Water"));
     }
 
     @Test
     void testAssignAnimalToEnclosureFull() {
         zoo.addEnclosure("water");
-        String[] names = {"tuki", "tukib", "tukic", "tukid", "tukie", "tukif"};
-        for (String name : names) {
-            zoo.addAnimal("Orca", name, 3);
+        for (int i = 0; i <= Enclosure.DEFAULT_CAPACITY; i++) {
+            zoo.addAnimal("Orca", "tuki" + i, 3);
         }
-        for (int i = 0; i < 5; i++) {
-            assertEquals(AssignResult.ASSIGNED, zoo.assignAnimalToEnclosure(names[i], "water"));
+        for (int i = 0; i < Enclosure.DEFAULT_CAPACITY; i++) {
+            assertEquals(ActionResult.SUCCESS, zoo.assignAnimalToEnclosure("tuki" + i, "water"));
         }
-        assertEquals(AssignResult.ENCLOSURE_FULL, zoo.assignAnimalToEnclosure("tukif", "water"));
-        assertEquals(5, zoo.findEnclosure("water").getNumAnimals());
-        assertNull(zoo.findAnimal("tukif").getEnclosure());
+        assertEquals(ActionResult.ENCLOSURE_FULL, zoo.assignAnimalToEnclosure("tuki5", "water"));
+        assertNull(zoo.findAnimal("tuki5").getEnclosure());
     }
 
     @Test
     void testRemoveAnimalFromEnclosure() {
-        zoo.addEnclosure("Orca's Enclosure");
-        zoo.addAnimal("Orca", "tuki", 3);
-        zoo.assignAnimalToEnclosure("tuki", "Orca's Enclosure");
-        assertTrue(zoo.removeAnimalFromEnclosure("tuki", "Orca's Enclosure"));
-        assertEquals(0, zoo.getEnclosures().get(0).getNumAnimals());
-        assertNull(zoo.findAnimal("tuki").getEnclosure());
+        settledPenguin("pingu");
+        assertTrue(zoo.removeAnimalFromEnclosure("pingu", "Ice"));
+        assertNull(zoo.findAnimal("pingu").getEnclosure());
+        assertFalse(zoo.removeAnimalFromEnclosure("pingu", "Ice"));
+        assertFalse(zoo.removeAnimalFromEnclosure("nobody", "Ice"));
+        assertFalse(zoo.removeAnimalFromEnclosure("pingu", "Nowhere"));
     }
 
+    // ----- care -----
+
     @Test
-    void testRemoveAnimalFromEnclosureFailures() {
-        zoo.addEnclosure("Water");
-        zoo.addAnimal("Orca", "tuki", 3);
-        assertFalse(zoo.removeAnimalFromEnclosure("tuki", "Water"));
-        assertFalse(zoo.removeAnimalFromEnclosure("nobody", "Water"));
-        assertFalse(zoo.removeAnimalFromEnclosure("tuki", "Nowhere"));
+    void testFeedAnimalUsesFood() {
+        zoo.addAnimal("Elephant", "Dumbo", 5);
+        assertEquals(ActionResult.SUCCESS, zoo.feedAnimal("Dumbo"));
+        assertEquals(20 - Species.ELEPHANT.getFoodPerMeal(), zoo.getFood());
+        assertEquals(130, zoo.findAnimal("Dumbo").getHunger());
+        zoo.setFood(4);
+        assertEquals(ActionResult.NOT_ENOUGH_FOOD, zoo.feedAnimal("Dumbo"));
+        assertEquals(ActionResult.NO_SUCH_ANIMAL, zoo.feedAnimal("nobody"));
     }
 
     @Test
     void testFeedAllAnimals() {
+        assertEquals(ActionResult.NOTHING_TO_DO, zoo.feedAllAnimals());
+        zoo.addAnimal("Penguin", "pingu", 5);
+        zoo.addAnimal("Giraffe", "longus", 5);
+        assertEquals(ActionResult.SUCCESS, zoo.feedAllAnimals());
+        assertEquals(20 - 1 - 3, zoo.getFood());
+        assertEquals(130, zoo.findAnimal("longus").getHunger());
+        zoo.setFood(3);
+        assertEquals(ActionResult.NOT_ENOUGH_FOOD, zoo.feedAllAnimals());
+        assertEquals(130, zoo.findAnimal("pingu").getHunger());
+    }
+
+    @Test
+    void testPlayAndRestOncePerDay() {
+        zoo.addAnimal("Orca", "tuki", 2);
+        assertEquals(ActionResult.SUCCESS, zoo.playAnimal("tuki"));
+        assertEquals(ActionResult.ALREADY_DONE_TODAY, zoo.playAnimal("tuki"));
+        assertEquals(ActionResult.SUCCESS, zoo.restAnimal("tuki"));
+        assertEquals(ActionResult.ALREADY_DONE_TODAY, zoo.restAnimal("tuki"));
+        assertEquals(ActionResult.NO_SUCH_ANIMAL, zoo.playAnimal("nobody"));
+        zoo.endDay();
+        assertEquals(ActionResult.SUCCESS, zoo.playAnimal("tuki"));
+    }
+
+    @Test
+    void testPlayAndRestEveryone() {
         zoo.addAnimal("Orca", "tuki", 2);
         zoo.addAnimal("Penguin", "pingu", 5);
-        zoo.feedAllAnimals();
-        assertEquals(110, zoo.getAnimals().get(0).getHunger());
-        assertEquals(110, zoo.getAnimals().get(1).getHunger());
+        zoo.playAnimal("tuki");
+        assertEquals(1, zoo.playWithAllAnimals());
+        assertEquals(2, zoo.restAllAnimals());
+        assertEquals(0, zoo.restAllAnimals());
+        assertEquals(120, zoo.findAnimal("pingu").getHappiness());
+        assertEquals(110, zoo.findAnimal("pingu").getHealth());
     }
 
     @Test
-    void testFeedAnimal() {
-        zoo.addAnimal("Orca", "tuki", 2);
-        assertTrue(zoo.feedAnimal("tuki"));
-        assertTrue(zoo.feedAnimal("tuki"));
-        assertEquals(120, zoo.findAnimal("tuki").getHunger());
-        assertFalse(zoo.feedAnimal("nobody"));
-    }
-
-    @Test
-    void testPlayWithAllAnimals() {
+    void testSendToHospital() {
         zoo.addAnimal("Orca", "tuki", 2);
         zoo.addAnimal("Penguin", "pingu", 5);
-        zoo.playWithAllAnimals();
-        assertEquals(115, zoo.getAnimals().get(0).getHappiness());
-        assertEquals(115, zoo.getAnimals().get(1).getHappiness());
+        assertEquals(ActionResult.SUCCESS, zoo.sendToHospital("tuki"));
+        assertEquals(1000 - Hospital.ADMISSION_FEE, zoo.getMoney());
+        assertEquals(ActionResult.IN_HOSPITAL, zoo.sendToHospital("tuki"));
+        assertEquals(ActionResult.IN_HOSPITAL, zoo.feedAnimal("tuki"));
+        assertEquals(ActionResult.IN_HOSPITAL, zoo.playAnimal("tuki"));
+        assertEquals(ActionResult.HOSPITAL_FULL, zoo.sendToHospital("pingu"));
+        assertEquals(ActionResult.NO_SUCH_ANIMAL, zoo.sendToHospital("nobody"));
     }
 
     @Test
-    void testPlayAnimal() {
+    void testSendToHospitalNotEnoughMoney() {
         zoo.addAnimal("Orca", "tuki", 2);
-        assertTrue(zoo.playAnimal("tuki"));
-        assertTrue(zoo.playAnimal("tuki"));
-        assertEquals(130, zoo.findAnimal("tuki").getHappiness());
-        assertFalse(zoo.playAnimal("nobody"));
+        zoo.setMoney(10);
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.sendToHospital("tuki"));
+        assertFalse(zoo.findAnimal("tuki").isInHospital());
     }
 
     @Test
-    void testSleepAllAnimals() {
-        zoo.addAnimal("Orca", "tuki", 2);
-        zoo.addAnimal("Penguin", "pingu", 5);
-        zoo.sleepAllAnimals();
-        assertEquals(105, zoo.getAnimals().get(0).getHealth());
-        assertEquals(105, zoo.getAnimals().get(1).getHealth());
+    void testCleanAllEnclosures() {
+        assertEquals(ActionResult.NOTHING_TO_DO, zoo.cleanAllEnclosures());
+        zoo.addEnclosure("Orca's Enclosure");
+        zoo.addEnclosure("Penguin's Enclosure");
+        zoo.getEnclosures().get(0).setCleanliness(4);
+        assertEquals(10, zoo.getCleaningCost());
+        assertEquals(ActionResult.SUCCESS, zoo.cleanAllEnclosures());
+        assertEquals(990, zoo.getMoney());
+        assertEquals(9, zoo.getEnclosures().get(0).getCleanliness());
+        zoo.setMoney(0);
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.cleanAllEnclosures());
     }
 
     @Test
-    void testSleepAnimal() {
-        zoo.addAnimal("Orca", "tuki", 2);
-        assertTrue(zoo.sleepAnimal("tuki"));
-        assertTrue(zoo.sleepAnimal("tuki"));
-        assertEquals(110, zoo.findAnimal("tuki").getHealth());
-        assertFalse(zoo.sleepAnimal("nobody"));
+    void testBuyFood() {
+        assertEquals(ActionResult.SUCCESS, zoo.buyFood(2));
+        assertEquals(20 + 2 * Zoo.FOOD_PACK_SIZE, zoo.getFood());
+        assertEquals(1000 - 2 * Zoo.FOOD_PACK_PRICE, zoo.getMoney());
+        assertEquals(ActionResult.NOTHING_TO_DO, zoo.buyFood(0));
+        assertEquals(ActionResult.NOT_ENOUGH_MONEY, zoo.buyFood(1000));
+    }
+
+    // ----- the day cycle -----
+
+    @Test
+    void testEndDay() {
+        Animal pingu = settledPenguin("pingu");
+        assertEquals(3, zoo.getRating());
+        DayReport report = zoo.endDay();
+        assertEquals(1, report.getDay());
+        assertEquals(Species.PENGUIN.getAppeal(), report.getTicketIncome());
+        assertEquals(Zoo.ENCLOSURE_UPKEEP, report.getUpkeep());
+        assertEquals(1000 + report.getProfit(), zoo.getMoney());
+        assertTrue(report.getEvents().isEmpty());
+        assertEquals(2, zoo.getDay());
+        assertEquals(80, pingu.getHunger());
+        assertEquals(9, zoo.findEnclosure("Ice").getCleanliness());
     }
 
     @Test
-    void testTreatAnimal() {
-        zoo.addAnimal("Orca", "tuki", 2);
-        assertTrue(zoo.treatAnimal("tuki"));
-        Animal animalA = zoo.findAnimal("tuki");
-        assertEquals(150, animalA.getHappiness());
-        assertEquals(150, animalA.getHealth());
-        assertEquals(150, animalA.getHunger());
-        assertFalse(zoo.treatAnimal("nobody"));
+    void testWaitingRoomAnimalsEarnNothing() {
+        zoo.adoptAnimal(Species.PENGUIN, "pingu");
+        assertEquals(0, zoo.getTicketIncome());
+        assertEquals(0, zoo.getUpkeep());
     }
+
+    @Test
+    void testTicketIncomeGrowsWithLevel() {
+        settledPenguin("pingu");
+        zoo.setLevel(2);
+        assertEquals(29, zoo.getTicketIncome());
+    }
+
+    @Test
+    void testEndDayDischargesPatients() {
+        Animal pingu = settledPenguin("pingu");
+        pingu.setHealth(30);
+        zoo.sendToHospital("pingu");
+        assertEquals(0, zoo.getTicketIncome());
+        assertTrue(zoo.endDay().getEvents().isEmpty());
+        DayReport report = zoo.endDay();
+        assertEquals(1, report.getEvents().size());
+        assertFalse(pingu.isInHospital());
+        assertEquals(Animal.MAX_CONDITION, pingu.getHealth());
+    }
+
+    @Test
+    void testEndDayInspectorTakesNeglectedAnimals() {
+        Animal pingu = settledPenguin("pingu");
+        pingu.setHealth(5);
+        DayReport report = zoo.endDay();
+        assertNull(zoo.findAnimal("pingu"));
+        assertTrue(zoo.findEnclosure("Ice").isEmpty());
+        assertTrue(report.getEvents().get(0).contains("welfare inspector"));
+    }
+
+    @Test
+    void testBirthdays() {
+        Animal pingu = settledPenguin("pingu");
+        for (int i = 0; i < Zoo.BIRTHDAY_INTERVAL; i++) {
+            pingu.treat();
+            zoo.endDay();
+        }
+        assertEquals(Zoo.BIRTHDAY_INTERVAL + 1, zoo.getDay());
+        assertEquals(3, pingu.getAge());
+    }
+
+    @Test
+    void testBankruptcy() {
+        zoo.addEnclosure("Empty");
+        zoo.setMoney(5);
+        zoo.endDay();
+        assertEquals(-5, zoo.getMoney());
+        assertTrue(zoo.isBankrupt());
+    }
+
+    // ----- random events -----
+
+    // EFFECTS: returns a zoo whose nightly event is always the given kind, with a settled penguin "pingu"
+    private Zoo zooWithEvent(int kind) {
+        Zoo eventful = new Zoo("Eventful", new FixedRandom(kind));
+        eventful.addEnclosure("Ice");
+        eventful.addAnimal("Penguin", "pingu", 2);
+        eventful.assignAnimalToEnclosure("pingu", "Ice");
+        eventful.setEventChance(1);
+        return eventful;
+    }
+
+    @Test
+    void testEventSchoolTrip() {
+        Zoo eventful = zooWithEvent(0);
+        DayReport report = eventful.endDay();
+        assertEquals(1000 + report.getProfit() + 50, eventful.getMoney());
+        assertEquals(1, report.getEvents().size());
+    }
+
+    @Test
+    void testEventRats() {
+        Zoo eventful = zooWithEvent(1);
+        eventful.endDay();
+        assertEquals(15, eventful.getFood());
+    }
+
+    @Test
+    void testEventStorm() {
+        Zoo eventful = zooWithEvent(2);
+        eventful.endDay();
+        assertEquals(10 - 1 - 3, eventful.findEnclosure("Ice").getCleanliness());
+    }
+
+    @Test
+    void testEventNewspaper() {
+        Zoo eventful = zooWithEvent(3);
+        eventful.endDay();
+        assertEquals(100 - 10 + 25, eventful.findAnimal("pingu").getHappiness());
+    }
+
+    @Test
+    void testEventDonation() {
+        Zoo eventful = zooWithEvent(4);
+        DayReport report = eventful.endDay();
+        assertEquals(1000 + report.getProfit() + 150, eventful.getMoney());
+    }
+
+    @Test
+    void testNoEventsWithoutAnimals() {
+        Zoo empty = new Zoo("Empty", new FixedRandom(4));
+        empty.setEventChance(1);
+        assertTrue(empty.endDay().getEvents().isEmpty());
+        assertEquals(1000, empty.getMoney());
+    }
+
+    // ----- rating -----
 
     @Test
     void testRatingEmptyZoo() {
@@ -248,14 +491,17 @@ public class ZooTest {
     }
 
     @Test
-    void testRatingDefaultAndBest() {
-        zoo.addEnclosure("Water");
-        zoo.addAnimal("Orca", "tuki", 2);
-        assertEquals(3, zoo.getRating());
-        zoo.treatAnimal("tuki");
-        zoo.cleanAllEnclosures();
-        zoo.cleanAllEnclosures();
-        zoo.cleanAllEnclosures();
+    void testRatingBest() {
+        Animal pingu = settledPenguin("pingu");
+        pingu.treat();
+        zoo.findEnclosure("Ice").setCleanliness(Enclosure.MAX_CLEANLINESS);
         assertEquals(Zoo.MAX_RATING, zoo.getRating());
+    }
+
+    @Test
+    void testRatingIgnoresPatients() {
+        settledPenguin("pingu");
+        zoo.sendToHospital("pingu");
+        assertEquals(0, zoo.getRating());
     }
 }
