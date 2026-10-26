@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Zoo Manager (console)",
+            "request": "launch",
+            "mainClass": "ui.Main",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "Zoo Manager (GUI)",
+            "request": "launch",
+            "mainClass": "ui.MainGUI",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

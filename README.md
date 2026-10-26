@@ -9,6 +9,17 @@
 **Who will use it and why is this project interesting for me?**
 Anyone with an interest of a little sim managing game and likes animals will enjoy using this application. This project is interesting for me because my dream job is to become a game developer and this was one of my many ideas that I wanted to make myself before.
 
+## How to Run
+
+From the project folder (needs a JDK 8 or newer; it uses the one in `JAVA_HOME` if set):
+
+- `.\run.cmd` plays the console version
+- `.\run.cmd gui` plays the window (GUI) version
+- `.\run.cmd test` runs the tests
+
+In VS Code you can also pick **Zoo Manager (console)** or **Zoo Manager (GUI)** in the Run and Debug panel.
+If the console shows odd symbols like `[32m` instead of colours, set the `NO_COLOR` environment variable.
+
  ## User Stories
 
  - As a user, I want to **create an enclosure** by specifying a name
